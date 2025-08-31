@@ -1,8 +1,8 @@
 # smsman_api.py
 import requests
 
-# Assuming config.py is in the same directory and contains SMSMAN_API_KEY
-from config import SMSMAN_API_KEY
+import os
+SMSMAN_API_KEY = os.environ.get('SMSMAN_API_KEY')
 
 # A dictionary to map SMS-Man internal codes to country names and flags
 # This is a direct translation of the PHP array you provided
