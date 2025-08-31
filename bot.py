@@ -111,7 +111,6 @@ def handle_text_messages(message):
                 users_data[str(target_id)]['balance'] += amount
                 save_users(users_data)
                 
-                # إرسال إشعار للمستخدم الذي تم شحن رصيده
                 try:
                     bot.send_message(target_id, f"🎉 تم إضافة {amount} عملة إلى رصيدك من قبل المشرف!")
                 except telebot.apihelper.ApiException as e:
@@ -236,9 +235,46 @@ def handle_callback(call):
     
     # User actions
     if user_id != DEVELOPER_ID:
-        # إضافة معالجات للأزرار التي لا تعمل في قائمة المستخدم
-        if data in ['Payment', 'sh', 'Wo', 'worldwide', 'saavmotamy', 'assignment', 'readycard-10', 'ready', 'gents', 'MyAccount', 'super']:
-            bot.answer_callback_query(call.id, text="عذرًا، هذه الخدمة غير متاحة حالياً.")
+        if data == 'Payment':
+            bot.send_message(chat_id, "💰 *لشحن رصيدك، يرجى التواصل مع المشرف عبر هذا الحساب: @[username].*", parse_mode='Markdown')
+            return
+        elif data == 'sh':
+            bot.send_message(chat_id, "👤 *خدمة الرشق (زيادة المتابعين) قيد التطوير وستتوفر قريباً.*", parse_mode='Markdown')
+            return
+        elif data == 'Wo':
+            bot.send_message(chat_id, "🛍 *لا توجد عروض خاصة متاحة حالياً. تابعنا للحصول على التحديثات!*", parse_mode='Markdown')
+            return
+        elif data == 'worldwide':
+            bot.send_message(chat_id, "☑️ *قسم الأرقام العشوائية قيد الإعداد. يرجى العودة لاحقاً.*", parse_mode='Markdown')
+            return
+        elif data == 'saavmotamy':
+            bot.send_message(chat_id, "👑 *خدمة الأرقام الملكية قادمة قريباً، تابعنا لمعرفة المزيد.*", parse_mode='Markdown')
+            return
+        elif data == 'assignment':
+            bot.send_message(chat_id, "💰 *يمكنك ربح عملات مجانية عن طريق إكمال بعض المهام. تابع الإعلانات لمعرفة التفاصيل.*", parse_mode='Markdown')
+            return
+        elif data == 'readycard-10':
+            bot.send_message(chat_id, "💳 *متجر الكروت متوفر الآن! تواصل مع الدعم لشراء كرت.*", parse_mode='Markdown')
+            return
+        elif data == 'ready':
+            bot.send_message(chat_id, "🔰 *لا توجد أرقام جاهزة متاحة حالياً.*", parse_mode='Markdown')
+            return
+        elif data == 'gents':
+            bot.send_message(chat_id, "👨‍💻 *نظام الوكلاء قيد المراجعة. إذا كنت مهتماً، يمكنك التواصل مع المشرف.*", parse_mode='Markdown')
+            return
+        elif data == 'MyAccount':
+            user_info = users_data.get(str(user_id), {})
+            message_text = (
+                f"⚙️ **إعدادات حسابك:**\n"
+                f"**الآيدي:** `{user_info.get('id', 'غير متوفر')}`\n"
+                f"**الاسم:** `{user_info.get('first_name', 'غير متوفر')}`\n"
+                f"**اسم المستخدم:** `@{user_info.get('username', 'غير متوفر')}`\n"
+                f"**الرصيد:** `{user_info.get('balance', 0)}` عملة\n"
+            )
+            bot.send_message(chat_id, message_text, parse_mode='Markdown')
+            return
+        elif data == 'super':
+            bot.send_message(chat_id, "📮 *للتواصل مع الدعم الفني، يرجى إرسال رسالتك إلى هذا الحساب: @[username].*")
             return
 
         elif data == 'Buynum':
@@ -272,7 +308,7 @@ def handle_callback(call):
             markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4'))
             markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_5'))
             markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_6'))
-            markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f'show_countries_{service}_7'))
+            markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_7"))
             markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_8'))
             markup.row(types.InlineKeyboardButton('⁞ إيمو 🐦', callback_data=f'show_countries_{service}_9'))
             markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_11'))
@@ -556,7 +592,7 @@ def handle_callback(call):
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="✉️ أرسل **آيدي المستخدم** الذي تريد إرسال رسالة إليه.")
 
 
-    # User actions
+    # User actions (end)
     else:
         if data == 'Buynum':
             markup = types.InlineKeyboardMarkup()
