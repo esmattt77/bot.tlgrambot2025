@@ -4,12 +4,15 @@ import telebot
 from telebot import types
 import json
 import requests
-from config import *
+import os
 
-from viotp_api import get_viotp_balance, get_viotp_countries, request_viotp_number, get_viotp_code, cancel_viotp_request
-from smsman_api import get_smsman_balance, get_smsman_countries, request_smsman_number, get_smsman_code, cancel_smsman_request
+# قراءة توكن البوت من المتغيرات البيئية
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+if not TELEGRAM_BOT_TOKEN:
+    print("Error: TELEGRAM_BOT_TOKEN environment variable not set.")
+    exit()
 
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 # --- Helper Functions ---
 def load_data():
