@@ -13,7 +13,7 @@ if not TELEGRAM_BOT_TOKEN:
     exit()
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
-DEVELOPER_ID = os.environ.get('DEVELOPER_ID')
+DEVELOPER_ID = int(os.environ.get('DEVELOPER_ID'))
 EESSMT = os.environ.get('EESSMT')
 
 # --- Helper Functions ---
