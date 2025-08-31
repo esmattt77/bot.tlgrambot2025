@@ -1,6 +1,6 @@
-# viotp_api.py
-import requests
-from config import API_VIOTP, VIOTP_API_KEY
+import os
+API_VIOTP = os.environ.get('API_VIOTP')
+VIOTP_API_KEY = os.environ.get('VIOTP_API_KEY')
 
 def get_viotp_balance():
     try:
