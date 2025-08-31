@@ -1,3 +1,4 @@
+import requests
 import os
 API_VIOTP = os.environ.get('API_VIOTP')
 VIOTP_API_KEY = os.environ.get('VIOTP_API_KEY')
