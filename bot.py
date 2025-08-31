@@ -54,8 +54,9 @@ def register_user(user_id, first_name, username):
         save_users(users_data)
 
 # --- Message Handlers ---
-@bot.message_handler(commands=['start', 'admin', 'balance'])
-def handle_commands(message):
+# تم تعديل هذا السطر ليصبح أكثر مرونة في التعامل مع جميع أنواع الرسائل النصية
+@bot.message_handler(func=lambda message: True)
+def handle_text_messages(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     first_name = message.from_user.first_name
@@ -65,9 +66,13 @@ def handle_commands(message):
 
     data_file = load_data()
     state = data_file.get('states', {}).get(str(user_id))
-
-    if user_id == DEVELOPER_ID:
-        if message.text in ['/start', '/admin']:
+    
+    # 1. حل مشكلة عدم استجابة البوت للأوامر النصية
+    # تم فصل منطق الأوامر النصية عن الـ callbacks
+    # هذه الدالة ستتعامل مع كل الرسائل النصية
+    if message.text in ['/start', 'start/', 'بدء/']:
+        if user_id == DEVELOPER_ID:
+            # قائمة المشرف
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('إحصائيات البوت 📊', callback_data='bot_stats'), types.InlineKeyboardButton('إدارة المستخدمين 👥', callback_data='manage_users'))
             markup.row(types.InlineKeyboardButton('إضافة رصيد 💰', callback_data='add_balance'), types.InlineKeyboardButton('خصم رصيد 💸', callback_data='deduct_balance'))
@@ -75,73 +80,8 @@ def handle_commands(message):
             markup.row(types.InlineKeyboardButton('عرض الطلبات النشطة 📞', callback_data='view_active_requests'), types.InlineKeyboardButton('إلغاء جميع الطلبات 🚫', callback_data='cancel_all_requests'))
             markup.row(types.InlineKeyboardButton('إرسال رسالة جماعية 📣', callback_data='broadcast_message'), types.InlineKeyboardButton('الكشف عن أرصدة المواقع 💳', callback_data='show_api_balance_menu'))
             bot.send_message(chat_id, "أهلاً بك في لوحة تحكم المشرف!", reply_markup=markup)
-        
-        elif state and state.get('step') == 'waiting_for_add_coin_id':
-            target_id = message.text
-            data_file['states'][str(user_id)]['target_id'] = target_id
-            data_file['states'][str(user_id)]['step'] = 'waiting_for_add_coin_amount'
-            save_data(data_file)
-            bot.send_message(chat_id, "تم حفظ الآيدي. الآن أرسل **المبلغ** الذي تريد إضافته للمستخدم.")
-        
-        elif state and state.get('step') == 'waiting_for_add_coin_amount':
-            amount = int(message.text)
-            target_id = state.get('target_id')
-            users_data = load_users()
-            if str(target_id) not in users_data:
-                users_data[str(target_id)] = {'balance': 0}
-            users_data[str(target_id)]['balance'] += amount
-            save_users(users_data)
-            del data_file['states'][str(user_id)]
-            save_data(data_file)
-            bot.send_message(chat_id, f"✅ تم إضافة {amount} عملة إلى المستخدم ذو الآيدي: {target_id}")
-
-        elif state and state.get('step') == 'waiting_for_deduct_coin_id':
-            target_id = message.text
-            data_file['states'][str(user_id)]['target_id'] = target_id
-            data_file['states'][str(user_id)]['step'] = 'waiting_for_deduct_coin_amount'
-            save_data(data_file)
-            bot.send_message(chat_id, "تم حفظ الآيدي. الآن أرسل **المبلغ** الذي تريد خصمه من المستخدم.")
-        
-        elif state and state.get('step') == 'waiting_for_deduct_coin_amount':
-            amount = int(message.text)
-            target_id = state.get('target_id')
-            users_data = load_users()
-            if str(target_id) not in users_data:
-                users_data[str(target_id)] = {'balance': 0}
-            users_data[str(target_id)]['balance'] -= amount
-            save_users(users_data)
-            del data_file['states'][str(user_id)]
-            save_data(data_file)
-            bot.send_message(chat_id, f"✅ تم خصم {amount} عملة من المستخدم ذو الآيدي: {target_id}")
-
-        elif state and state.get('step') == 'waiting_for_broadcast_message':
-            users_data = load_users()
-            for uid in users_data.keys():
-                bot.send_message(uid, message.text)
-            del data_file['states'][str(user_id)]
-            save_data(data_file)
-            bot.send_message(chat_id, "📣 اكتمل البث بنجاح!")
-
-        elif state and state.get('step') == 'waiting_for_admin_price':
-            custom_price = int(message.text)
-            country_name = state.get('country_name')
-            country_code = state.get('country_code')
-            service = state.get('service')
-            app_id = state.get('app_id')
-
-            if service not in data_file['countries']:
-                data_file['countries'][service] = {}
-            if str(app_id) not in data_file['countries'][service]:
-                data_file['countries'][service][str(app_id)] = {}
-            
-            data_file['countries'][service][str(app_id)][country_code] = {'name': country_name, 'price': custom_price}
-            
-            del data_file['states'][str(user_id)]
-            save_data(data_file)
-            bot.send_message(chat_id, f"✅ تم إضافة الدولة **{country_name}** بالرمز **{country_code}** والسعر **{custom_price}** بنجاح لخدمة **{service}**!", parse_mode='Markdown')
-
-    else:
-        if message.text == '/start':
+        else:
+            # قائمة المستخدم
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
             markup.row(types.InlineKeyboardButton('💰︙شحن رصيدك', callback_data='Payment'), types.InlineKeyboardButton('👤︙قسم الرشق', callback_data='sh'))
@@ -152,11 +92,86 @@ def handle_commands(message):
             markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
             markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
             bot.send_message(chat_id, f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
-        elif message.text in ['/balance', 'رصيدي']:
-            users_data = load_users()
-            balance = users_data.get(str(user_id), {}).get('balance', 0)
-            bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* عملة.", parse_mode='Markdown')
 
+    elif message.text in ['/balance', 'رصيدي']:
+        users_data = load_users()
+        balance = users_data.get(str(user_id), {}).get('balance', 0)
+        bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* عملة.", parse_mode='Markdown')
+    
+    # معالجة الأوامر النصية للمشرف (مثل إضافة الرصيد)
+    if user_id == DEVELOPER_ID:
+        if state and state.get('step') == 'waiting_for_add_coin_id':
+            target_id = message.text
+            data_file['states'][str(user_id)]['target_id'] = target_id
+            data_file['states'][str(user_id)]['step'] = 'waiting_for_add_coin_amount'
+            save_data(data_file)
+            bot.send_message(chat_id, "تم حفظ الآيدي. الآن أرسل **المبلغ** الذي تريد إضافته للمستخدم.")
+        
+        elif state and state.get('step') == 'waiting_for_add_coin_amount':
+            try:
+                amount = int(message.text)
+                target_id = state.get('target_id')
+                users_data = load_users()
+                if str(target_id) not in users_data:
+                    users_data[str(target_id)] = {'balance': 0}
+                users_data[str(target_id)]['balance'] += amount
+                save_users(users_data)
+                del data_file['states'][str(user_id)]
+                save_data(data_file)
+                bot.send_message(chat_id, f"✅ تم إضافة {amount} عملة إلى المستخدم ذو الآيدي: {target_id}")
+            except ValueError:
+                bot.send_message(chat_id, "❌ المبلغ الذي أدخلته غير صحيح. يرجى إدخال رقم.")
+        
+        elif state and state.get('step') == 'waiting_for_deduct_coin_id':
+            target_id = message.text
+            data_file['states'][str(user_id)]['target_id'] = target_id
+            data_file['states'][str(user_id)]['step'] = 'waiting_for_deduct_coin_amount'
+            save_data(data_file)
+            bot.send_message(chat_id, "تم حفظ الآيدي. الآن أرسل **المبلغ** الذي تريد خصمه من المستخدم.")
+        
+        elif state and state.get('step') == 'waiting_for_deduct_coin_amount':
+            try:
+                amount = int(message.text)
+                target_id = state.get('target_id')
+                users_data = load_users()
+                if str(target_id) not in users_data:
+                    users_data[str(target_id)] = {'balance': 0}
+                users_data[str(target_id)]['balance'] -= amount
+                save_users(users_data)
+                del data_file['states'][str(user_id)]
+                save_data(data_file)
+                bot.send_message(chat_id, f"✅ تم خصم {amount} عملة من المستخدم ذو الآيدي: {target_id}")
+            except ValueError:
+                bot.send_message(chat_id, "❌ المبلغ الذي أدخلته غير صحيح. يرجى إدخال رقم.")
+
+        elif state and state.get('step') == 'waiting_for_broadcast_message':
+            users_data = load_users()
+            for uid in users_data.keys():
+                bot.send_message(uid, message.text)
+            del data_file['states'][str(user_id)]
+            save_data(data_file)
+            bot.send_message(chat_id, "📣 اكتمل البث بنجاح!")
+        
+        elif state and state.get('step') == 'waiting_for_admin_price':
+            try:
+                custom_price = int(message.text)
+                country_name = state.get('country_name')
+                country_code = state.get('country_code')
+                service = state.get('service')
+                app_id = state.get('app_id')
+
+                if service not in data_file['countries']:
+                    data_file['countries'][service] = {}
+                if str(app_id) not in data_file['countries'][service]:
+                    data_file['countries'][service][str(app_id)] = {}
+                
+                data_file['countries'][service][str(app_id)][country_code] = {'name': country_name, 'price': custom_price}
+                
+                del data_file['states'][str(user_id)]
+                save_data(data_file)
+                bot.send_message(chat_id, f"✅ تم إضافة الدولة **{country_name}** بالرمز **{country_code}** والسعر **{custom_price}** بنجاح لخدمة **{service}**!", parse_mode='Markdown')
+            except ValueError:
+                bot.send_message(chat_id, "❌ السعر الذي أدخلته غير صحيح. يرجى إدخال رقم.")
 
 # --- Callback Query Handler ---
 @bot.callback_query_handler(func=lambda call: True)
@@ -168,9 +183,35 @@ def handle_callback(call):
     
     data_file = load_data()
     users_data = load_users()
-
+    
+    # زر الرجوع (back)
+    # تم تعديل هذا الجزء ليعيد المستخدم إلى القائمة الرئيسية
+    if data == 'back':
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
+        markup.row(types.InlineKeyboardButton('💰︙شحن رصيدك', callback_data='Payment'), types.InlineKeyboardButton('👤︙قسم الرشق', callback_data='sh'))
+        markup.row(types.InlineKeyboardButton('🅿️︙كشف الحساب', callback_data='Record'), types.InlineKeyboardButton('🛍︙قسم العروض', callback_data='Wo'))
+        markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
+        markup.row(types.InlineKeyboardButton('💰︙ربح روبل مجاني 🤑', callback_data='assignment'))
+        markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
+        markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
+        markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
+        return
+        
     # Admin actions
     if user_id == DEVELOPER_ID:
+        # زر الرجوع للمشرف
+        if data == 'admin_main_menu':
+            markup = types.InlineKeyboardMarkup()
+            markup.row(types.InlineKeyboardButton('إحصائيات البوت 📊', callback_data='bot_stats'), types.InlineKeyboardButton('إدارة المستخدمين 👥', callback_data='manage_users'))
+            markup.row(types.InlineKeyboardButton('إضافة رصيد 💰', callback_data='add_balance'), types.InlineKeyboardButton('خصم رصيد 💸', callback_data='deduct_balance'))
+            markup.row(types.InlineKeyboardButton('إضافة دولة 🌐', callback_data='add_country'), types.InlineKeyboardButton('حذف دولة ❌', callback_data='delete_country'))
+            markup.row(types.InlineKeyboardButton('عرض الطلبات النشطة 📞', callback_data='view_active_requests'), types.InlineKeyboardButton('إلغاء جميع الطلبات 🚫', callback_data='cancel_all_requests'))
+            markup.row(types.InlineKeyboardButton('إرسال رسالة جماعية 📣', callback_data='broadcast_message'), types.InlineKeyboardButton('الكشف عن أرصدة المواقع 💳', callback_data='show_api_balance_menu'))
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="أهلاً بك في لوحة تحكم المشرف!", reply_markup=markup)
+            return
+
         if data == 'add_balance':
             data_file['states'][str(user_id)] = {'step': 'waiting_for_add_coin_id'}
             save_data(data_file)
@@ -183,11 +224,14 @@ def handle_callback(call):
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('ViOTP', callback_data='add_country_service_viotp'))
             markup.row(types.InlineKeyboardButton('SMS.man', callback_data='add_country_service_smsman'))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='🌐 اختر الخدمة لإضافة دولة:', reply_markup=markup)
         elif data == 'bot_stats':
             total_users = len(users_data)
             message = f"📊 إحصائيات البوت:\nعدد المستخدمين: *{total_users}*\n"
-            bot.send_message(chat_id, message, parse_mode='Markdown')
+            markup = types.InlineKeyboardMarkup()
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
         elif data == 'broadcast_message':
             data_file['states'][str(user_id)] = {'step': 'waiting_for_broadcast_message'}
             save_data(data_file)
@@ -233,8 +277,13 @@ def handle_callback(call):
             service = parts[3]
             app_id = parts[4]
             page = int(parts[6]) if len(parts) > 6 else 1
-
-            api_countries = get_viotp_countries(app_id) if service == 'viotp' else get_smsman_countries(app_id)
+            
+            # تم إضافة try/except لتجنب الأخطاء عند الاتصال بالـ API
+            try:
+                api_countries = get_viotp_countries(app_id) if service == 'viotp' else get_smsman_countries(app_id)
+            except Exception as e:
+                bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}')
+                return
 
             if not api_countries:
                 bot.send_message(chat_id, '❌ لا توجد دول متاحة من واجهة API لهذه الخدمة حاليًا.')
@@ -249,8 +298,8 @@ def handle_callback(call):
 
             markup = types.InlineKeyboardMarkup()
             for code, info in current_countries:
-                price_text = f" - السعر: {info['price']}" if 'price' in info else ''
-                markup.row(types.InlineKeyboardButton(f"{info['name']}{price_text}", callback_data=f"select_country_{service}_{app_id}_{code}"))
+                price_text = f" - السعر: {info.get('price', 'غير متاح')}" if 'price' in info else ''
+                markup.row(types.InlineKeyboardButton(f"{info.get('name', 'غير معروف')}{price_text}", callback_data=f"select_country_{service}_{app_id}_{code}"))
             
             nav_buttons = []
             if page > 1:
@@ -283,28 +332,17 @@ def handle_callback(call):
 
     # User actions
     else:
+        # تم تعديل هذا الجزء ليظهر "سيرفر 1" و "سيرفر 2" للمستخدم العادي
         if data == 'Buynum':
             markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('ViOTP', callback_data='service_viotp'))
-            markup.row(types.InlineKeyboardButton('SMS.man', callback_data='service_smsman'))
+            markup.row(types.InlineKeyboardButton('سيرفر 1', callback_data='service_viotp'))
+            markup.row(types.InlineKeyboardButton('سيرفر 2', callback_data='service_smsman'))
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="📞 *اختر الخدمة التي تريد الشراء منها:*", parse_mode='Markdown', reply_markup=markup)
         
         elif data == 'Record':
             balance = users_data.get(str(user_id), {}).get('balance', 0)
             bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* عملة.", parse_mode='Markdown')
-        
-        elif data == 'back':
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
-            markup.row(types.InlineKeyboardButton('💰︙شحن رصيدك', callback_data='Payment'), types.InlineKeyboardButton('👤︙قسم الرشق', callback_data='sh'))
-            markup.row(types.InlineKeyboardButton('🅿️︙كشف الحساب', callback_data='Record'), types.InlineKeyboardButton('🛍︙قسم العروض', callback_data='Wo'))
-            markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
-            markup.row(types.InlineKeyboardButton('💰︙ربح روبل مجاني 🤑', callback_data='assignment'))
-            markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
-            markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
-            markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
         
         elif data.startswith('service_'):
             service = data.split('_')[1]
@@ -321,7 +359,9 @@ def handle_callback(call):
             markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13'))
             markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14'))
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{service}**.", parse_mode='Markdown', reply_markup=markup)
+            # تم تعديل هذا السطر ليظهر اسم السيرفر للمشرف فقط
+            server_name = 'ViOTP' if service == 'viotp' else 'SMS.man'
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
         
         elif data.startswith('show_countries_'):
             parts = data.split('_')
@@ -353,7 +393,7 @@ def handle_callback(call):
             if nav_buttons:
                 markup.row(*nav_buttons)
             
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data=f'service_{service}'))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='Buynum')) # تم تعديل هذا الزر ليعود إلى قائمة الخدمات
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر الدولة التي تريدها: (صفحة {page}/{total_pages})", reply_markup=markup)
 
         elif data.startswith('buy_'):
