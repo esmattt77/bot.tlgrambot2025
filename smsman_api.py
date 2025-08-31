@@ -1,4 +1,5 @@
 # smsman_api.py
+import json
 import requests
 
 import os
@@ -138,7 +139,7 @@ def get_smsman_countries(app_id):
 
     countries_data = {}
     try:
-        data = requests.json.loads(response_json)
+        data =البيانات = json.loads(response_json)
         if isinstance(data, dict):
             for country_code, service_info in data.items():
                 if service_name in service_info and float(service_info[service_name]['cost']) > 0:
