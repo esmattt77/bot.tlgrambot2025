@@ -14,6 +14,7 @@ if not TELEGRAM_BOT_TOKEN:
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 DEVELOPER_ID = os.environ.get('DEVELOPER_ID')
+EESSMT = os.environ.get('EESSMT')
 
 # --- Helper Functions ---
 def load_data():
