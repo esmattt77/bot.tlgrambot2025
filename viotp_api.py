@@ -3,7 +3,6 @@ import os
 import requests
 import json
 
-# ViOTP API Settings (get key from environment variable)
 VIOTP_API_KEY = os.environ.get('VIOTP_API_KEY')
 API_VIOTP = 'https://api.viotp.com'
 
@@ -14,7 +13,7 @@ def get_viotp_balance():
         response.raise_for_status()
         data = response.json()
         if data.get('status') == 'success':
-            return data.get('balance')
+            return data.get('data', {}).get('balance')
         else:
             print(f"Error from ViOTP API: {data.get('message', 'Unknown error')}")
             return False
@@ -34,7 +33,7 @@ def get_viotp_countries(app_id):
         if data.get('status') == 'success':
             countries = {
                 item['country_id']: {'name': item['country_name'], 'price': item['price']}
-                for item in data['countries']
+                for item in data.get('data', {}).get('countries', [])
             }
             return countries
         else:
@@ -51,7 +50,8 @@ def request_viotp_number(app_id, country_code):
         response.raise_for_status()
         data = response.json()
         if data.get('status') == 'success':
-            return {'request_id': data.get('request_id'), 'Phone': data.get('number')}
+            request_data = data.get('data', {})
+            return {'request_id': request_data.get('request_id'), 'Phone': request_data.get('phone_number')}
         else:
             print(f"Error from ViOTP API: {data.get('message', 'Unknown error')}")
             return False
@@ -65,8 +65,8 @@ def get_viotp_code(request_id):
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
-        if data.get('status') == 'success' and 'code' in data:
-            return {'Code': data.get('code')}
+        if data.get('status') == 'success' and 'code' in data.get('data', {}):
+            return {'Code': data.get('data', {}).get('code')}
         else:
             return False
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
