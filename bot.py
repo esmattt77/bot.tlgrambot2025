@@ -488,18 +488,30 @@ def handle_callback(call):
             markup.row(types.InlineKeyboardButton('كشف رصيد SMS.man', callback_data='get_smsman_balance'))
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="💰 اختر الموقع الذي تريد كشف رصيده:", reply_markup=markup)
+        
+        # --- هذا هو الجزء الذي تم تعديله ---
         elif data == 'get_viotp_balance':
             viotp_balance = get_viotp_balance()
-            message = f"💰 رصيد ViOTP الحالي:\n• ViOTP: *{viotp_balance}* عملة." if viotp_balance is not False else "❌ فشل الاتصال."
+            if viotp_balance is not None and viotp_balance is not False:
+                message = f"💰 رصيد ViOTP الحالي:\n• ViOTP: *{viotp_balance}* عملة."
+            else:
+                message = "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
+
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+        
         elif data == 'get_smsman_balance':
             smsman_balance = get_smsman_balance()
-            message = f"💰 رصيد SMS.man الحالي:\n• SMS.man: *{smsman_balance}* عملة." if smsman_balance is not False else "❌ فشل الاتصال."
+            if smsman_balance is not None and smsman_balance is not False:
+                message = f"💰 رصيد SMS.man الحالي:\n• SMS.man: *{smsman_balance}* عملة."
+            else:
+                message = "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+        
+        # --- نهاية التعديل ---
 
         elif data.startswith('add_country_service_'):
             service = data.split('_')[3]
@@ -613,7 +625,7 @@ def handle_callback(call):
             markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
             markup.row(types.InlineKeyboardButton('💰︙ربح روبل مجاني 🤑', callback_data='assignment'))
             markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
-            markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
+            markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.row(types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
             markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
         
