@@ -4,7 +4,6 @@ from telebot import types
 import json
 import requests
 import os
-# تم استبدال الدوال المنفصلة باستيراد الفئة
 from viotp_api import VIOTPAPI
 from smsman_api import get_smsman_balance, get_smsman_countries, request_smsman_number, get_smsman_code, cancel_smsman_request
 
@@ -23,8 +22,7 @@ SMSMAN_API_KEY = os.environ.get('SMSMAN_API_KEY')
 
 # إنشاء كائنات (objects) للتعامل مع الـ APIs
 viotp_client = VIOTPAPI(VIOTP_API_KEY)
-# لا يوجد تعديل على SMSMan لأنها تعمل
-# smsman_client = SMSManAPI(SMSMAN_API_KEY) # افترض أن لديك هذه الفئة في ملف smsman_api.py
+
 
 # --- Helper Functions ---
 def load_data():
@@ -323,7 +321,6 @@ def handle_callback(call):
             markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13'))
             markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14'))
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
-            # تم تعديل هذا السطر ليظهر اسم السيرفر للمشرف فقط
             server_name = 'سيرفر 1' if service == 'viotp' else 'سيرفر 2'
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
         
@@ -373,9 +370,8 @@ def handle_callback(call):
                 bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} عملة.\n*رصيدك الحالي:* {user_balance} عملة.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
                 return
 
-            # تم تعديل هذا السطر لاستدعاء الدوال من الكائن
             if service == 'viotp':
-                result = viotp_client.buy_number(app_id) # تعديل: خدمة VIOTP لا تستخدم country_code في هذا الرابط
+                result = viotp_client.buy_number(app_id, country_code)
             else:
                 result = request_smsman_number(app_id, country_code)
 
@@ -408,7 +404,6 @@ def handle_callback(call):
             parts = data.split('_')
             service, request_id = parts[2], parts[3]
             
-            # تم تعديل هذا السطر لاستدعاء الدوال من الكائن
             if service == 'viotp':
                 result = viotp_client.get_otp(request_id)
             else:
@@ -432,7 +427,6 @@ def handle_callback(call):
             parts = data.split('_')
             service, request_id = parts[1], parts[2]
             
-            # تم تعديل هذا السطر لاستدعاء الدوال من الكائن
             if service == 'viotp':
                 result = viotp_client.cancel_request(request_id)
             else:
@@ -509,14 +503,14 @@ def handle_callback(call):
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="💰 اختر الموقع الذي تريد كشف رصيده:", reply_markup=markup)
         elif data == 'get_viotp_balance':
-            # تم تعديل هذا السطر لاستدعاء الدالة من الكائن
             viotp_balance_data = viotp_client.get_balance()
-            if viotp_balance_data.get('success'):
+            if viotp_balance_data and viotp_balance_data.get('success'):
                 viotp_balance = viotp_balance_data['data']['balance']
                 message = f"💰 رصيد ViOTP الحالي: *{viotp_balance}* عملة."
             else:
                 message = "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
             markup = types.InlineKeyboardMarkup()
+            # تعديل: زر الرجوع يعود الآن للقائمة الصحيحة
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
         elif data == 'get_smsman_balance':
@@ -549,22 +543,8 @@ def handle_callback(call):
             page = int(parts[6]) if len(parts) > 6 else 1
 
             try:
-                # تم تعديل هذا السطر لاستدعاء الدالة من الكائن
                 if service == 'viotp':
-                    # ملاحظة: API VIOTP لا يدعم جلب الدول حسب app_id في رابط منفصل
-                    # لذلك، سنستخدم get_services ونجد الدول منها.
-                    api_services_data = viotp_client.get_services()
-                    # يجب أن يتم تعديل الكود هنا ليجد قائمة الدول من الاستجابة
-                    # هذا الجزء قد يحتاج إلى تعديل بناءً على API ViOTP
-                    api_countries = {}
-                    if api_services_data.get('success') and 'data' in api_services_data:
-                        for item in api_services_data['data']:
-                            if str(item.get('service_id')) == str(app_id):
-                                # هذا الجزء يفترض أن API يرجع الدول ضمن الخدمة
-                                # إذا لم يكن كذلك، سيتم تخطي هذا الجزء
-                                for country in item.get('countries', []):
-                                    api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
-                                break
+                    api_countries = viotp_client.get_countries(app_id)
                 else:
                     api_countries = get_smsman_countries(app_id)
             except Exception as e:
@@ -601,16 +581,9 @@ def handle_callback(call):
         elif data.startswith('select_country_'):
             parts = data.split('_')
             service, app_id, country_code = parts[2], parts[3], parts[4]
-            # تم تعديل هذا السطر لاستدعاء الدالة من الكائن
+            
             if service == 'viotp':
-                api_countries = {} # يجب أن يتم تعديل الكود هنا ليجد قائمة الدول من الاستجابة
-                api_services_data = viotp_client.get_services()
-                if api_services_data.get('success') and 'data' in api_services_data:
-                    for item in api_services_data['data']:
-                        if str(item.get('service_id')) == str(app_id):
-                            for country in item.get('countries', []):
-                                api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
-                            break
+                api_countries = viotp_client.get_countries(app_id)
             else:
                 api_countries = get_smsman_countries(app_id)
                 
@@ -685,7 +658,6 @@ def handle_callback(call):
             markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13'))
             markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14'))
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
-            # تم تعديل هذا السطر ليظهر اسم السيرفر للمشرف فقط
             server_name = 'سيرفر 1' if service == 'viotp' else 'سيرفر 2'
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
         
@@ -735,9 +707,8 @@ def handle_callback(call):
                 bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} عملة.\n*رصيدك الحالي:* {user_balance} عملة.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
                 return
 
-            # تم تعديل هذا السطر لاستدعاء الدوال من الكائن
             if service == 'viotp':
-                result = viotp_client.buy_number(app_id) # تعديل: خدمة VIOTP لا تستخدم country_code في هذا الرابط
+                result = viotp_client.buy_number(app_id, country_code)
             else:
                 result = request_smsman_number(app_id, country_code)
 
@@ -770,7 +741,6 @@ def handle_callback(call):
             parts = data.split('_')
             service, request_id = parts[2], parts[3]
             
-            # تم تعديل هذا السطر لاستدعاء الدوال من الكائن
             if service == 'viotp':
                 result = viotp_client.get_otp(request_id)
             else:
@@ -794,7 +764,6 @@ def handle_callback(call):
             parts = data.split('_')
             service, request_id = parts[1], parts[2]
             
-            # تم تعديل هذا السطر لاستدعاء الدوال من الكائن
             if service == 'viotp':
                 result = viotp_client.cancel_request(request_id)
             else:
