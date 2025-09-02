@@ -506,7 +506,6 @@ def handle_callback(call):
             viotp_balance_data = viotp_client.get_balance()
             if viotp_balance_data and viotp_balance_data.get('success'):
                 viotp_balance = viotp_balance_data['data']['balance']
-                viotp_balance = viotp_balance / 100
                 message = f"💰 رصيد ViOTP الحالي: *{viotp_balance}* عملة."
             else:
                 message = "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
