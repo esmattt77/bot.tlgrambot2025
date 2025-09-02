@@ -500,24 +500,24 @@ def handle_callback(call):
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('كشف رصيد ViOTP', callback_data='get_viotp_balance'))
             markup.row(types.InlineKeyboardButton('كشف رصيد SMS.man', callback_data='get_smsman_balance'))
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="💰 اختر الموقع الذي تريد كشف رصيده:", reply_markup=markup)
         elif data == 'get_viotp_balance':
             viotp_balance_data = viotp_client.get_balance()
             if viotp_balance_data and viotp_balance_data.get('success'):
                 viotp_balance = viotp_balance_data['data']['balance']
+                viotp_balance = viotp_balance / 100
                 message = f"💰 رصيد ViOTP الحالي: *{viotp_balance}* عملة."
             else:
                 message = "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
             markup = types.InlineKeyboardMarkup()
-            # تعديل: زر الرجوع يعود الآن للقائمة الصحيحة
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
         elif data == 'get_smsman_balance':
             smsman_balance = get_smsman_balance()
             message = f"💰 رصيد SMS.man الحالي:\n• SMS.man: *{smsman_balance}* عملة." if smsman_balance is not False else "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
             markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
         elif data.startswith('add_country_service_'):
             service = data.split('_')[3]
@@ -544,7 +544,8 @@ def handle_callback(call):
 
             try:
                 if service == 'viotp':
-                    api_countries = viotp_client.get_countries(app_id)
+                    all_services = viotp_client.get_services_and_countries()
+                    api_countries = all_services.get(app_id, {}).get('countries', {})
                 else:
                     api_countries = get_smsman_countries(app_id)
             except Exception as e:
@@ -583,11 +584,12 @@ def handle_callback(call):
             service, app_id, country_code = parts[2], parts[3], parts[4]
             
             if service == 'viotp':
-                api_countries = viotp_client.get_countries(app_id)
+                all_services = viotp_client.get_services_and_countries()
+                country_info = all_services.get(app_id, {}).get('countries', {}).get(country_code, {})
             else:
                 api_countries = get_smsman_countries(app_id)
+                country_info = api_countries.get(country_code, {})
                 
-            country_info = api_countries.get(country_code, {})
             country_name = country_info.get('name')
             api_price = country_info.get('price', 0)
             
