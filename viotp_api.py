@@ -1,62 +1,67 @@
-# viotp_api.py
-
 import requests
-import os
-from typing import Dict, Any
 
 class VIOTPAPI:
-    def __init__(self, api_key: str):
+    def __init__(self, api_key):
         self.api_key = api_key
-        # Base URL for the ViOTP API.
-        self.base_url = "https://api.viotp.com"
+        self.base_url = "https://viotp.com/api/"
 
-    def get_balance(self) -> Dict[str, Any]:
-        """Fetches the user's account balance from ViOTP."""
+    def make_request(self, endpoint, params=None):
+        if params is None:
+            params = {}
+        params['apiKey'] = self.api_key
+        url = f"{self.base_url}{endpoint}"
         try:
-            url = f"{self.base_url}/users/balance?token={self.api_key}"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
+            response = requests.get(url, params=params)
+            response.raise_for_status()  # Raises an HTTPError for bad responses (4xx or 5xx)
             return response.json()
         except requests.exceptions.RequestException as e:
-            return {"success": False, "message": f"Connection error: {e}"}
+            print(f"API Error: {e}")
+            return {'success': False, 'message': 'API request failed'}
 
-    def get_services(self) -> Dict[str, Any]:
-        """Fetches the list of available services and their prices."""
-        try:
-            url = f"{self.base_url}/service/getv2?token={self.api_key}"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            return {"success": False, "message": f"Connection error: {e}"}
+    def get_balance(self):
+        return self.make_request("balance")
 
-    def buy_number(self, service_id: int) -> Dict[str, Any]:
-        """Buys a new number for a specific service."""
-        try:
-            url = f"{self.base_url}/request/getv2?token={self.api_key}&serviceId={service_id}"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            return {"success": False, "message": f"Connection error: {e}"}
+    def get_services_and_countries(self):
+        services_response = self.make_request("services")
+        if not services_response.get('success'):
+            return {}
+        
+        services_data = {}
+        for service in services_response['data']['services']:
+            service_id = service['id']
+            countries_response = self.make_request("country-by-service", {'serviceId': service_id})
+            
+            if countries_response.get('success'):
+                countries_data = {}
+                for country in countries_response['data']['countries']:
+                    countries_data[country['countryId']] = {
+                        'name': country['name'],
+                        'price': country['price']
+                    }
+                services_data[service_id] = {
+                    'name': service['name'],
+                    'countries': countries_data
+                }
+        return services_data
 
-    def get_otp(self, request_id: str) -> Dict[str, Any]:
-        """Fetches the OTP for a purchased number."""
-        try:
-            url = f"{self.base_url}/session/getv2?token={self.api_key}&requestId={request_id}"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            return {"success": False, "message": f"Connection error: {e}"}
+    def buy_number(self, service_id, country_code):
+        params = {
+            'serviceId': service_id,
+            'countryId': country_code,
+            'Action': 'get'
+        }
+        return self.make_request("number", params)
 
-    def cancel_request(self, request_id: str) -> Dict[str, Any]:
-        """Cancels a number request. Note: this API might not be officially supported."""
-        try:
-            url = f"{self.base_url}/session/cancelv2?token={self.api_key}&requestId={request_id}"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            return {"success": False, "message": f"Connection error: {e}"}
+    def get_otp(self, order_id):
+        params = {
+            'orderId': order_id,
+            'Action': 'getStatus'
+        }
+        return self.make_request("number", params)
 
+    def cancel_request(self, order_id):
+        params = {
+            'orderId': order_id,
+            'Action': 'cancel'
+        }
+        return self.make_request("number", params)
