@@ -1,108 +1,62 @@
+# viotp_api.py
+
 import requests
 import os
+from typing import Dict, Any
 
-# Base URL for the ViOTP API.
-BASE_URL = "https://api.viotp.com/users/"
+class VIOTPAPI:
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        # Base URL for the ViOTP API.
+        self.base_url = "https://api.viotp.com"
 
-def get_viotp_balance():
-    """Fetches the user's balance from the ViOTP API."""
-    try:
-        api_key = os.environ.get('VIOTP_API_KEY')
-        if not api_key:
-            return False
+    def get_balance(self) -> Dict[str, Any]:
+        """Fetches the user's account balance from ViOTP."""
+        try:
+            url = f"{self.base_url}/users/balance?token={self.api_key}"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "message": f"Connection error: {e}"}
 
-        url = f"{BASE_URL}balance?token={api_key}"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data.get('status') == 'success' and 'data' in data and 'balance' in data['data']:
-            balance_raw = data['data']['balance']
-            balance_calculated = int((balance_raw / 22000) * 64)
-            return balance_calculated
-        else:
-            return False
-            
-    except requests.exceptions.RequestException as e:
-        print(f"Error connecting to ViOTP API: {e}")
-        return False
-    except (ValueError, KeyError) as e:
-        print(f"Error parsing ViOTP response: {e}")
-        return False
+    def get_services(self) -> Dict[str, Any]:
+        """Fetches the list of available services and their prices."""
+        try:
+            url = f"{self.base_url}/service/getv2?token={self.api_key}"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "message": f"Connection error: {e}"}
 
-def get_viotp_countries(app_id):
-    """Fetches the list of available countries and their prices for a given app."""
-    try:
-        api_key = os.environ.get('VIOTP_API_KEY')
-        if not api_key:
-            return {}
+    def buy_number(self, service_id: int) -> Dict[str, Any]:
+        """Buys a new number for a specific service."""
+        try:
+            url = f"{self.base_url}/request/getv2?token={self.api_key}&serviceId={service_id}"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "message": f"Connection error: {e}"}
 
-        url = f"{BASE_URL}services?token={api_key}&app_id={app_id}"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data.get('status') == 'success' and 'data' in data:
-            return {item['id']: {'name': item['country_name'], 'price': item['price']} for item in data['data']}
-        else:
-            return {}
-            
-    except requests.exceptions.RequestException:
-        return {}
+    def get_otp(self, request_id: str) -> Dict[str, Any]:
+        """Fetches the OTP for a purchased number."""
+        try:
+            url = f"{self.base_url}/session/getv2?token={self.api_key}&requestId={request_id}"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "message": f"Connection error: {e}"}
 
-def request_viotp_number(app_id, country_code):
-    """Requests a new number from the ViOTP API."""
-    try:
-        api_key = os.environ.get('VIOTP_API_KEY')
-        if not api_key:
-            return None
+    def cancel_request(self, request_id: str) -> Dict[str, Any]:
+        """Cancels a number request. Note: this API might not be officially supported."""
+        try:
+            url = f"{self.base_url}/session/cancelv2?token={self.api_key}&requestId={request_id}"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "message": f"Connection error: {e}"}
 
-        url = f"{BASE_URL}request?token={api_key}&app_id={app_id}&country_code={country_code}"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data.get('status') == 'success' and 'data' in data:
-            return {'request_id': data['data']['id'], 'Phone': data['data']['number']}
-        else:
-            return None
-    except requests.exceptions.RequestException:
-        return None
-
-def get_viotp_code(request_id):
-    """Checks for the SMS code for a requested number."""
-    try:
-        api_key = os.environ.get('VIOTP_API_KEY')
-        if not api_key:
-            return None
-
-        url = f"{BASE_URL}check?token={api_key}&id={request_id}"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data.get('status') == 'success' and 'data' in data and data['data']['status'] == 'success':
-            return {'Code': data['data']['sms_code']}
-        else:
-            return None
-    except requests.exceptions.RequestException:
-        return None
-
-def cancel_viotp_request(request_id):
-    """Cancels a pending number request."""
-    try:
-        api_key = os.environ.get('VIOTP_API_KEY')
-        if not api_key:
-            return False
-
-        url = f"{BASE_URL}cancel?token={api_key}&id={request_id}"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data.get('status') == 'success':
-            return True
-        else:
-            return False
-    except requests.exceptions.RequestException:
-        return False
