@@ -280,7 +280,7 @@ def handle_callback(call):
     
     if user_id != DEVELOPER_ID:
         if data == 'Payment':
-            bot.send_message(chat_id, "💰 *لشحن رصيدك، يرجى التواصل مع المشرف عبر هذا الحساب: @[username].*", parse_mode='Markdown')
+            bot.send_message(chat_id, "💰 *لشحن رصيدك، يرجى التواصل مع المشرف عبر هذا الحساب: @[ESM7AT].*", parse_mode='Markdown')
             return
         elif data == 'sh':
             markup = types.InlineKeyboardMarkup()
@@ -344,7 +344,7 @@ def handle_callback(call):
             bot.send_message(chat_id, message_text, parse_mode='Markdown')
             return
         elif data == 'super':
-            bot.send_message(chat_id, "📮 *للتواصل مع الدعم الفني، يرجى إرسال رسالتك إلى هذا الحساب: @[username].*")
+            bot.send_message(chat_id, "📮 *للتواصل مع الدعم الفني، يرجى إرسال رسالتك إلى هذا الحساب: @[ESM7AT].*")
             return
 
         elif data == 'Buynum':
