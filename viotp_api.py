@@ -1,67 +1,90 @@
 import requests
+import json
+import os
 
 class VIOTPAPI:
     def __init__(self, api_key):
         self.api_key = api_key
         self.base_url = "https://viotp.com/api/"
 
-    def make_request(self, endpoint, params=None):
-        if params is None:
-            params = {}
-        params['apiKey'] = self.api_key
-        url = f"{self.base_url}{endpoint}"
+    def get_services_and_countries(self):
+        url = self.base_url + "get-services-and-countries"
+        params = {"apiKey": self.api_key}
         try:
             response = requests.get(url, params=params)
-            response.raise_for_status()  # Raises an HTTPError for bad responses (4xx or 5xx)
+            response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
             return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"API Error: {e}")
-            return {'success': False, 'message': 'API request failed'}
+            print(f"Error fetching services and countries: {e}")
+            return None
 
     def get_balance(self):
-        return self.make_request("balance")
+        url = self.base_url + "balance"
+        params = {"apiKey": self.api_key}
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching balance: {e}")
+            return None
 
-    def get_services_and_countries(self):
-        services_response = self.make_request("services")
-        if not services_response.get('success'):
-            return {}
+    def buy_number(self, app_id, country_code):
+        url = self.base_url + "buy"
+        params = {
+            "apiKey": self.api_key,
+            "app_id": app_id,
+            "country_code": country_code
+        }
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Error buying number: {e}")
+            return None
+
+    def get_otp(self, request_id):
+        url = self.base_url + "get-code"
+        params = {
+            "apiKey": self.api_key,
+            "request_id": request_id
+        }
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Error getting OTP: {e}")
+            return None
+
+    def cancel_request(self, request_id):
+        url = self.base_url + "cancel"
+        params = {
+            "apiKey": self.api_key,
+            "request_id": request_id
+        }
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Error cancelling request: {e}")
+            return None
+
+if __name__ == "__main__":
+    # هذا الجزء لتجربة الكلاس بشكل منفصل
+    # تأكد من وضع مفتاح API الخاص بك في متغير البيئة VIOTP_API_KEY
+    viotp_api_key = os.environ.get('VIOTP_API_KEY')
+    if viotp_api_key:
+        viotp = VIOTPAPI(viotp_api_key)
         
-        services_data = {}
-        for service in services_response['data']['services']:
-            service_id = service['id']
-            countries_response = self.make_request("country-by-service", {'serviceId': service_id})
-            
-            if countries_response.get('success'):
-                countries_data = {}
-                for country in countries_response['data']['countries']:
-                    countries_data[country['countryId']] = {
-                        'name': country['name'],
-                        'price': country['price']
-                    }
-                services_data[service_id] = {
-                    'name': service['name'],
-                    'countries': countries_data
-                }
-        return services_data
+        print("Testing get_balance...")
+        balance_data = viotp.get_balance()
+        if balance_data and balance_data.get("success"):
+            print(f"Success! Balance: {balance_data['data']['balance']}")
+        else:
+            print(f"Failed to get balance. Response: {balance_data}")
 
-    def buy_number(self, service_id, country_code):
-        params = {
-            'serviceId': service_id,
-            'countryId': country_code,
-            'Action': 'get'
-        }
-        return self.make_request("number", params)
-
-    def get_otp(self, order_id):
-        params = {
-            'orderId': order_id,
-            'Action': 'getStatus'
-        }
-        return self.make_request("number", params)
-
-    def cancel_request(self, order_id):
-        params = {
-            'orderId': order_id,
-            'Action': 'cancel'
-        }
-        return self.make_request("number", params)
+    else:
+        print("Please set the VIOTP_API_KEY environment variable.")
