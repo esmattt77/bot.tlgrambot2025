@@ -4,14 +4,17 @@ from telebot import types
 import json
 import requests
 import os
-# تم استبدال الدوال المنفصلة باستيراد الفئة
 from viotp_api import VIOTPAPI
 from smsman_api import get_smsman_balance, get_smsman_countries, request_smsman_number, get_smsman_code, cancel_smsman_request
+from flask import Flask, request
 
-# قراءة توكن البوت من المتغيرات البيئية
+# Read bot token from environment variables
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-if not TELEGRAM_BOT_TOKEN:
-    print("Error: TELEGRAM_BOT_TOKEN environment variable not set.")
+WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+PORT = int(os.environ.get('PORT', 5000))
+
+if not TELEGRAM_BOT_TOKEN or not WEBHOOK_URL:
+    print("Error: TELEGRAM_BOT_TOKEN and WEBHOOK_URL environment variables must be set.")
     exit()
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
@@ -20,11 +23,12 @@ EESSMT = os.environ.get('EESSMT')
 VIOTP_API_KEY = os.environ.get('VIOTP_API_KEY')
 SMSMAN_API_KEY = os.environ.get('SMSMAN_API_KEY')
 
+# Create a Flask app instance
+app = Flask(__name__)
 
-# إنشاء كائنات (objects) للتعامل مع الـ APIs
+# Create API client objects
 viotp_client = VIOTPAPI(VIOTP_API_KEY)
-# لا يوجد تعديل على SMSMan لأنها تعمل
-# smsman_client = SMSManAPI(SMSMAN_API_KEY) # افترض أن لديك هذه الفئة في ملف smsman_api.py
+# smsman_client = SMSManAPI(SMSMAN_API_KEY) # Assuming you have this class
 
 # --- Helper Functions ---
 def load_data():
@@ -60,6 +64,20 @@ def register_user(user_id, first_name, username):
             'join_date': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
         }
         save_users(users_data)
+
+# --- Webhook Route ---
+@app.route(f'/{TELEGRAM_BOT_TOKEN}', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return '!', 200
+    else:
+        return 'Hello, World!', 200
+
+# The rest of your code from here on is unchanged.
+# Just paste it below this line.
 
 # --- Message Handlers ---
 @bot.message_handler(func=lambda message: True)
@@ -457,366 +475,370 @@ def handle_callback(call):
             else:
                 bot.send_message(chat_id, "❌ فشل إلغاء الطلب. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.")
 
-    # Admin actions
-    elif user_id == DEVELOPER_ID:
-        if data == 'admin_main_menu':
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('إحصائيات البوت 📊', callback_data='bot_stats'), types.InlineKeyboardButton('إدارة المستخدمين 👥', callback_data='manage_users'))
-            markup.row(types.InlineKeyboardButton('إضافة رصيد 💰', callback_data='add_balance'), types.InlineKeyboardButton('خصم رصيد 💸', callback_data='deduct_balance'))
-            markup.row(types.InlineKeyboardButton('إضافة دولة 🌐', callback_data='add_country'), types.InlineKeyboardButton('حذف دولة ❌', callback_data='delete_country'))
-            markup.row(types.InlineKeyboardButton('عرض الطلبات النشطة 📞', callback_data='view_active_requests'), types.InlineKeyboardButton('إلغاء جميع الطلبات 🚫', callback_data='cancel_all_requests'))
-            markup.row(types.InlineKeyboardButton('إرسال رسالة جماعية 📣', callback_data='broadcast_message'), types.InlineKeyboardButton('الكشف عن أرصدة المواقع 💳', callback_data='show_api_balance_menu'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="أهلاً بك في لوحة تحكم المشرف!", reply_markup=markup)
-            return
+# Admin actions
+elif user_id == DEVELOPER_ID:
+    if data == 'admin_main_menu':
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton('إحصائيات البوت 📊', callback_data='bot_stats'), types.InlineKeyboardButton('إدارة المستخدمين 👥', callback_data='manage_users'))
+        markup.row(types.InlineKeyboardButton('إضافة رصيد 💰', callback_data='add_balance'), types.InlineKeyboardButton('خصم رصيد 💸', callback_data='deduct_balance'))
+        markup.row(types.InlineKeyboardButton('إضافة دولة 🌐', callback_data='add_country'), types.InlineKeyboardButton('حذف دولة ❌', callback_data='delete_country'))
+        markup.row(types.InlineKeyboardButton('عرض الطلبات النشطة 📞', callback_data='view_active_requests'), types.InlineKeyboardButton('إلغاء جميع الطلبات 🚫', callback_data='cancel_all_requests'))
+        markup.row(types.InlineKeyboardButton('إرسال رسالة جماعية 📣', callback_data='broadcast_message'), types.InlineKeyboardButton('الكشف عن أرصدة المواقع 💳', callback_data='show_api_balance_menu'))
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="أهلاً بك في لوحة تحكم المشرف!", reply_markup=markup)
+        return
 
-        elif data == 'manage_users':
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('عرض رصيد مستخدم 💰', callback_data='check_user_balance'))
-            markup.row(types.InlineKeyboardButton('عرض معلومات مستخدم 👤', callback_data='get_user_info'))
-            markup.row(types.InlineKeyboardButton('إرسال رسالة لمستخدم ✉️', callback_data='send_message_to_user'))
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="👥 اختر إجراء لإدارة المستخدمين:", reply_markup=markup)
-            return
-        
-        elif data == 'add_balance':
-            data_file['states'][str(user_id)] = {'step': 'waiting_for_add_coin_id'}
-            save_data(data_file)
-            bot.send_message(chat_id, '➕ أرسل **آيدي المستخدم** الذي تريد إضافة رصيد له.')
-        elif data == 'deduct_balance':
-            data_file['states'][str(user_id)] = {'step': 'waiting_for_deduct_coin_id'}
-            save_data(data_file)
-            bot.send_message(chat_id, '➖ أرسل **آيدي المستخدم** الذي تريد خصم رصيد منه.')
-        elif data == 'add_country':
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('ViOTP', callback_data='add_country_service_viotp'))
-            markup.row(types.InlineKeyboardButton('SMS.man', callback_data='add_country_service_smsman'))
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='🌐 اختر الخدمة لإضافة دولة:', reply_markup=markup)
-        elif data == 'bot_stats':
-            total_users = len(users_data)
-            message = f"📊 إحصائيات البوت:\nعدد المستخدمين: *{total_users}*\n"
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
-        elif data == 'broadcast_message':
-            data_file['states'][str(user_id)] = {'step': 'waiting_for_broadcast_message'}
-            save_data(data_file)
-            bot.send_message(chat_id, '📣 أرسل رسالتك للبث.')
-        elif data == 'show_api_balance_menu':
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('كشف رصيد ViOTP', callback_data='get_viotp_balance'))
-            markup.row(types.InlineKeyboardButton('كشف رصيد SMS.man', callback_data='get_smsman_balance'))
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="💰 اختر الموقع الذي تريد كشف رصيده:", reply_markup=markup)
-        elif data == 'get_viotp_balance':
-            # تم تعديل هذا السطر لاستدعاء الدالة من الكائن
-            viotp_balance_data = viotp_client.get_balance()
-            if viotp_balance_data.get('success'):
-                viotp_balance = viotp_balance_data['data']['balance']
-                message = f"💰 رصيد ViOTP الحالي: *{viotp_balance}* عملة."
-            else:
-                message = "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
-        elif data == 'get_smsman_balance':
-            smsman_balance = get_smsman_balance()
-            message = f"💰 رصيد SMS.man الحالي:\n• SMS.man: *{smsman_balance}* عملة." if smsman_balance is not False else "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
-        elif data.startswith('add_country_service_'):
-            service = data.split('_')[3]
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('واتساب 💬', callback_data=f"add_country_app_{service}_2"))
-            markup.row(types.InlineKeyboardButton('تليجرام 📢', callback_data=f"add_country_app_{service}_3"))
-            markup.row(types.InlineKeyboardButton('فيسبوك 🏆', callback_data=f"add_country_app_{service}_4"))
-            markup.row(types.InlineKeyboardButton('إنستقرام 🎥', callback_data=f"add_country_app_{service}_5"))
-            markup.row(types.InlineKeyboardButton('تويتر 🚀', callback_data=f"add_country_app_{service}_6"))
-            markup.row(types.InlineKeyboardButton('تيكتوك 🎬', callback_data=f"add_country_app_{service}_7"))
-            markup.row(types.InlineKeyboardButton('قوقل 🌐', callback_data=f"add_country_app_{service}_8"))
-            markup.row(types.InlineKeyboardButton('إيمو 🐦', callback_data=f"add_country_app_{service}_9"))
-            markup.row(types.InlineKeyboardButton('سناب 🐬', callback_data=f"add_country_app_{service}_11"))
-            markup.row(types.InlineKeyboardButton('حراج 🛍', callback_data=f"add_country_app_{service}_13"))
-            markup.row(types.InlineKeyboardButton('السيرفر العام ☑️', callback_data=f"add_country_app_{service}_14"))
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='add_country'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='📱 اختر التطبيق:', reply_markup=markup)
-        
-        elif data.startswith('add_country_app_'):
-            parts = data.split('_')
-            service = parts[3]
-            app_id = parts[4]
-            page = int(parts[6]) if len(parts) > 6 else 1
+    elif data == 'manage_users':
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton('عرض رصيد مستخدم 💰', callback_data='check_user_balance'))
+        markup.row(types.InlineKeyboardButton('عرض معلومات مستخدم 👤', callback_data='get_user_info'))
+        markup.row(types.InlineKeyboardButton('إرسال رسالة لمستخدم ✉️', callback_data='send_message_to_user'))
+        markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="👥 اختر إجراء لإدارة المستخدمين:", reply_markup=markup)
+        return
+    
+    elif data == 'add_balance':
+        data_file['states'][str(user_id)] = {'step': 'waiting_for_add_coin_id'}
+        save_data(data_file)
+        bot.send_message(chat_id, '➕ أرسل **آيدي المستخدم** الذي تريد إضافة رصيد له.')
+    elif data == 'deduct_balance':
+        data_file['states'][str(user_id)] = {'step': 'waiting_for_deduct_coin_id'}
+        save_data(data_file)
+        bot.send_message(chat_id, '➖ أرسل **آيدي المستخدم** الذي تريد خصم رصيد منه.')
+    elif data == 'add_country':
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton('ViOTP', callback_data='add_country_service_viotp'))
+        markup.row(types.InlineKeyboardButton('SMS.man', callback_data='add_country_service_smsman'))
+        markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='🌐 اختر الخدمة لإضافة دولة:', reply_markup=markup)
+    elif data == 'bot_stats':
+        total_users = len(users_data)
+        message = f"📊 إحصائيات البوت:\nعدد المستخدمين: *{total_users}*\n"
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+    elif data == 'broadcast_message':
+        data_file['states'][str(user_id)] = {'step': 'waiting_for_broadcast_message'}
+        save_data(data_file)
+        bot.send_message(chat_id, '📣 أرسل رسالتك للبث.')
+    elif data == 'show_api_balance_menu':
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton('كشف رصيد ViOTP', callback_data='get_viotp_balance'))
+        markup.row(types.InlineKeyboardButton('كشف رصيد SMS.man', callback_data='get_smsman_balance'))
+        markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="💰 اختر الموقع الذي تريد كشف رصيده:", reply_markup=markup)
+    elif data == 'get_viotp_balance':
+        # تم تعديل هذا السطر لاستدعاء الدالة من الكائن
+        viotp_balance_data = viotp_client.get_balance()
+        if viotp_balance_data.get('success'):
+            viotp_balance = viotp_balance_data['data']['balance']
+            message = f"💰 رصيد ViOTP الحالي: *{viotp_balance}* عملة."
+        else:
+            message = "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+    elif data == 'get_smsman_balance':
+        smsman_balance = get_smsman_balance()
+        message = f"💰 رصيد SMS.man الحالي:\n• SMS.man: *{smsman_balance}* عملة." if smsman_balance is not False else "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+    elif data.startswith('add_country_service_'):
+        service = data.split('_')[3]
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton('واتساب 💬', callback_data=f"add_country_app_{service}_2"))
+        markup.row(types.InlineKeyboardButton('تليجرام 📢', callback_data=f"add_country_app_{service}_3"))
+        markup.row(types.InlineKeyboardButton('فيسبوك 🏆', callback_data=f"add_country_app_{service}_4"))
+        markup.row(types.InlineKeyboardButton('إنستقرام 🎥', callback_data=f"add_country_app_{service}_5"))
+        markup.row(types.InlineKeyboardButton('تويتر 🚀', callback_data=f"add_country_app_{service}_6"))
+        markup.row(types.InlineKeyboardButton('تيكتوك 🎬', callback_data=f"add_country_app_{service}_7"))
+        markup.row(types.InlineKeyboardButton('قوقل 🌐', callback_data=f"add_country_app_{service}_8"))
+        markup.row(types.InlineKeyboardButton('إيمو 🐦', callback_data=f"add_country_app_{service}_9"))
+        markup.row(types.InlineKeyboardButton('سناب 🐬', callback_data=f"add_country_app_{service}_11"))
+        markup.row(types.InlineKeyboardButton('حراج 🛍', callback_data=f"add_country_app_{service}_13"))
+        markup.row(types.InlineKeyboardButton('السيرفر العام ☑️', callback_data=f"add_country_app_{service}_14"))
+        markup.row(types.InlineKeyboardButton('رجوع', callback_data='add_country'))
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='📱 اختر التطبيق:', reply_markup=markup)
+    
+    elif data.startswith('add_country_app_'):
+        parts = data.split('_')
+        service = parts[3]
+        app_id = parts[4]
+        page = int(parts[6]) if len(parts) > 6 else 1
 
-            try:
-                # تم تعديل هذا السطر لاستدعاء الدالة من الكائن
-                if service == 'viotp':
-                    # ملاحظة: API VIOTP لا يدعم جلب الدول حسب app_id في رابط منفصل
-                    # لذلك، سنستخدم get_services ونجد الدول منها.
-                    api_services_data = viotp_client.get_services()
-                    # يجب أن يتم تعديل الكود هنا ليجد قائمة الدول من الاستجابة
-                    # هذا الجزء قد يحتاج إلى تعديل بناءً على API ViOTP
-                    api_countries = {}
-                    if api_services_data.get('success') and 'data' in api_services_data:
-                        for item in api_services_data['data']:
-                            if str(item.get('service_id')) == str(app_id):
-                                # هذا الجزء يفترض أن API يرجع الدول ضمن الخدمة
-                                # إذا لم يكن كذلك، سيتم تخطي هذا الجزء
-                                for country in item.get('countries', []):
-                                    api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
-                                break
-                else:
-                    api_countries = get_smsman_countries(app_id)
-            except Exception as e:
-                bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}')
-                return
-
-            if not api_countries:
-                bot.send_message(chat_id, '❌ لا توجد دول متاحة من واجهة API لهذه الخدمة حاليًا.')
-                return
-
-            items_per_page = 10
-            countries_chunked = list(api_countries.items())
-            total_pages = (len(countries_chunked) + items_per_page - 1) // items_per_page
-            start_index = (page - 1) * items_per_page
-            end_index = start_index + items_per_page
-            current_countries = countries_chunked[start_index:end_index]
-
-            markup = types.InlineKeyboardMarkup()
-            for code, info in current_countries:
-                price_text = f" - السعر: {info.get('price', 'غير متاح')}" if 'price' in info else ''
-                markup.row(types.InlineKeyboardButton(f"{info.get('name', 'غير معروف')}{price_text}", callback_data=f"select_country_{service}_{app_id}_{code}"))
-            
-            nav_buttons = []
-            if page > 1:
-                nav_buttons.append(types.InlineKeyboardButton('◀️ السابق', callback_data=f"add_country_app_{service}_{app_id}_page_{page - 1}"))
-            if page < total_pages:
-                nav_buttons.append(types.InlineKeyboardButton('التالي ▶️', callback_data=f"add_country_app_{service}_{app_id}_page_{page + 1}"))
-            if nav_buttons:
-                markup.row(*nav_buttons)
-            
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data=f"add_country_service_{service}"))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر الدولة التي تريد إضافتها: (صفحة {page}/{total_pages})", reply_markup=markup)
-
-        elif data.startswith('select_country_'):
-            parts = data.split('_')
-            service, app_id, country_code = parts[2], parts[3], parts[4]
+        try:
             # تم تعديل هذا السطر لاستدعاء الدالة من الكائن
             if service == 'viotp':
-                api_countries = {} # يجب أن يتم تعديل الكود هنا ليجد قائمة الدول من الاستجابة
+                # ملاحظة: API VIOTP لا يدعم جلب الدول حسب app_id في رابط منفصل
+                # لذلك، سنستخدم get_services ونجد الدول منها.
                 api_services_data = viotp_client.get_services()
+                # يجب أن يتم تعديل الكود هنا ليجد قائمة الدول من الاستجابة
+                # هذا الجزء قد يحتاج إلى تعديل بناءً على API ViOTP
+                api_countries = {}
                 if api_services_data.get('success') and 'data' in api_services_data:
                     for item in api_services_data['data']:
                         if str(item.get('service_id')) == str(app_id):
+                            # هذا الجزء يفترض أن API يرجع الدول ضمن الخدمة
+                            # إذا لم يكن كذلك، سيتم تخطي هذا الجزء
                             for country in item.get('countries', []):
                                 api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
                             break
             else:
                 api_countries = get_smsman_countries(app_id)
-                
-            country_info = api_countries.get(country_code, {})
-            country_name = country_info.get('name')
-            api_price = country_info.get('price', 0)
+        except Exception as e:
+            bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}')
+            return
+
+        if not api_countries:
+            bot.send_message(chat_id, '❌ لا توجد دول متاحة من واجهة API لهذه الخدمة حاليًا.')
+            return
+
+        items_per_page = 10
+        countries_chunked = list(api_countries.items())
+        total_pages = (len(countries_chunked) + items_per_page - 1) // items_per_page
+        start_index = (page - 1) * items_per_page
+        end_index = start_index + items_per_page
+        current_countries = countries_chunked[start_index:end_index]
+
+        markup = types.InlineKeyboardMarkup()
+        for code, info in current_countries:
+            price_text = f" - السعر: {info.get('price', 'غير متاح')}" if 'price' in info else ''
+            markup.row(types.InlineKeyboardButton(f"{info.get('name', 'غير معروف')}{price_text}", callback_data=f"select_country_{service}_{app_id}_{code}"))
+        
+        nav_buttons = []
+        if page > 1:
+            nav_buttons.append(types.InlineKeyboardButton('◀️ السابق', callback_data=f"add_country_app_{service}_{app_id}_page_{page - 1}"))
+        if page < total_pages:
+            nav_buttons.append(types.InlineKeyboardButton('التالي ▶️', callback_data=f"add_country_app_{service}_{app_id}_page_{page + 1}"))
+        if nav_buttons:
+            markup.row(*nav_buttons)
+        
+        markup.row(types.InlineKeyboardButton('رجوع', callback_data=f"add_country_service_{service}"))
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر الدولة التي تريد إضافتها: (صفحة {page}/{total_pages})", reply_markup=markup)
+
+    elif data.startswith('select_country_'):
+        parts = data.split('_')
+        service, app_id, country_code = parts[2], parts[3], parts[4]
+        # تم تعديل هذا السطر لاستدعاء الدالة من الكائن
+        if service == 'viotp':
+            api_countries = {} # يجب أن يتم تعديل الكود هنا ليجد قائمة الدول من الاستجابة
+            api_services_data = viotp_client.get_services()
+            if api_services_data.get('success') and 'data' in api_services_data:
+                for item in api_services_data['data']:
+                    if str(item.get('service_id')) == str(app_id):
+                        for country in item.get('countries', []):
+                            api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
+                        break
+        else:
+            api_countries = get_smsman_countries(app_id)
             
-            data_file['states'][str(user_id)] = {
-                'step': 'waiting_for_admin_price',
+        country_info = api_countries.get(country_code, {})
+        country_name = country_info.get('name')
+        api_price = country_info.get('price', 0)
+        
+        data_file['states'][str(user_id)] = {
+            'step': 'waiting_for_admin_price',
+            'service': service,
+            'app_id': app_id,
+            'country_code': country_code,
+            'country_name': country_name
+        }
+        save_data(data_file)
+        bot.send_message(chat_id, f"تم اختيار **{country_name}** بسعر أساسي **{api_price}** عملة.\n\nالآن أرسل **السعر الذي تريد بيعه للمستخدمين**.", parse_mode='Markdown')
+    
+    # Admin User Management Buttons
+    elif data == 'check_user_balance':
+        data_file['states'][str(user_id)] = {'step': 'waiting_for_check_user_id'}
+        save_data(data_file)
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="💰 أرسل **آيدي المستخدم** للتحقق من رصيده.")
+    
+    elif data == 'get_user_info':
+        data_file['states'][str(user_id)] = {'step': 'waiting_for_get_user_info_id'}
+        save_data(data_file)
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="👤 أرسل **آيدي المستخدم** للحصول على معلوماته.")
+    
+    elif data == 'send_message_to_user':
+        data_file['states'][str(user_id)] = {'step': 'waiting_for_send_message_to_user_id'}
+        save_data(data_file)
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="✉️ أرسل **آيدي المستخدم** الذي تريد إرسال رسالة إليه.")
+
+
+# User actions (end)
+else:
+    if data == 'Buynum':
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton('سيرفر 1', callback_data='service_viotp'))
+        markup.row(types.InlineKeyboardButton('سيرفر 2', callback_data='service_smsman'))
+        markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="📞 *اختر الخدمة التي تريد الشراء منها:*", parse_mode='Markdown', reply_markup=markup)
+    
+    elif data == 'Record':
+        balance = users_data.get(str(user_id), {}).get('balance', 0)
+        bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* عملة.", parse_mode='Markdown')
+    
+    elif data == 'back':
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
+        markup.row(types.InlineKeyboardButton('💰︙شحن رصيدك', callback_data='Payment'), types.InlineKeyboardButton('👤︙قسم الرشق', callback_data='sh'))
+        markup.row(types.InlineKeyboardButton('🅿️︙كشف الحساب', callback_data='Record'), types.InlineKeyboardButton('🛍︙قسم العروض', callback_data='Wo'))
+        markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
+        markup.row(types.InlineKeyboardButton('💰︙ربح روبل مجاني 🤑', callback_data='assignment'))
+        markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
+        markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
+        markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
+    
+    elif data.startswith('service_'):
+        service = data.split('_')[1]
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2'))
+        markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3'))
+        markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4'))
+        markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_5'))
+        markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_6'))
+        markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_7"))
+        markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_8'))
+        markup.row(types.InlineKeyboardButton('⁞ إيمو 🐦', callback_data=f'show_countries_{service}_9'))
+        markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_11'))
+        markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13'))
+        markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14'))
+        markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
+        # تم تعديل هذا السطر ليظهر اسم السيرفر للمشرف فقط
+        server_name = 'سيرفر 1' if service == 'viotp' else 'سيرفر 2'
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
+    
+    elif data.startswith('show_countries_'):
+        parts = data.split('_')
+        service, app_id = parts[2], parts[3]
+        page = int(parts[5]) if len(parts) > 5 else 1
+        
+        countries = data_file.get('countries', {}).get(service, {}).get(app_id, {})
+        
+        if not countries:
+            bot.send_message(chat_id, 'لا توجد دول متاحة لهذا التطبيق حاليًا.')
+            return
+
+        items_per_page = 10
+        country_items = list(countries.items())
+        total_pages = (len(country_items) + items_per_page - 1) // items_per_page
+        start_index = (page - 1) * items_per_page
+        end_index = start_index + items_per_page
+        current_countries = country_items[start_index:end_index]
+        
+        markup = types.InlineKeyboardMarkup()
+        for code, info in current_countries:
+            markup.row(types.InlineKeyboardButton(f"{info['name']} ({info['price']} عملة)", callback_data=f'buy_{service}_{app_id}_{code}'))
+        
+        nav_buttons = []
+        if page > 1:
+            nav_buttons.append(types.InlineKeyboardButton('◀️ السابق', callback_data=f'show_countries_{service}_{app_id}_page_{page - 1}'))
+        if page < total_pages:
+            nav_buttons.append(types.InlineKeyboardButton('التالي ▶️', callback_data=f'show_countries_{service}_{app_id}_page_{page + 1}'))
+        if nav_buttons:
+            markup.row(*nav_buttons)
+        
+        markup.row(types.InlineKeyboardButton('رجوع', callback_data='Buynum'))
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر الدولة التي تريدها: (صفحة {page}/{total_pages})", reply_markup=markup)
+
+    elif data.startswith('buy_'):
+        parts = data.split('_')
+        service, app_id, country_code = parts[1], parts[2], parts[3]
+        
+        country_info = data_file.get('countries', {}).get(service, {}).get(app_id, {}).get(country_code, {})
+        price = country_info.get('price', 0)
+        
+        user_balance = users_data.get(str(user_id), {}).get('balance', 0)
+        
+        if user_balance < price:
+            bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} عملة.\n*رصيدك الحالي:* {user_balance} عملة.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
+            return
+
+        # تم تعديل هذا السطر لاستدعاء الدوال من الكائن
+        if service == 'viotp':
+            result = viotp_client.buy_number(app_id) # تعديل: خدمة VIOTP لا تستخدم country_code في هذا الرابط
+        else:
+            result = request_smsman_number(app_id, country_code)
+
+        if result and result.get('request_id'):
+            request_id = result.get('request_id')
+            phone_number = result.get('Phone', 'غير متوفر')
+            
+            users_data[str(user_id)]['balance'] -= price
+            save_users(users_data)
+            
+            active_requests = data_file.get('active_requests', {})
+            active_requests[request_id] = {
+                'user_id': user_id,
+                'phone_number': phone_number,
+                'status': 'pending',
                 'service': service,
-                'app_id': app_id,
-                'country_code': country_code,
-                'country_name': country_name
+                'price': price
             }
+            data_file['active_requests'] = active_requests
             save_data(data_file)
-            bot.send_message(chat_id, f"تم اختيار **{country_name}** بسعر أساسي **{api_price}** عملة.\n\nالآن أرسل **السعر الذي تريد بيعه للمستخدمين**.", parse_mode='Markdown')
-        
-        # Admin User Management Buttons
-        elif data == 'check_user_balance':
-            data_file['states'][str(user_id)] = {'step': 'waiting_for_check_user_id'}
-            save_data(data_file)
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="💰 أرسل **آيدي المستخدم** للتحقق من رصيده.")
-        
-        elif data == 'get_user_info':
-            data_file['states'][str(user_id)] = {'step': 'waiting_for_get_user_info_id'}
-            save_data(data_file)
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="👤 أرسل **آيدي المستخدم** للحصول على معلوماته.")
-        
-        elif data == 'send_message_to_user':
-            data_file['states'][str(user_id)] = {'step': 'waiting_for_send_message_to_user_id'}
-            save_data(data_file)
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="✉️ أرسل **آيدي المستخدم** الذي تريد إرسال رسالة إليه.")
-
-
-    # User actions (end)
-    else:
-        if data == 'Buynum':
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('سيرفر 1', callback_data='service_viotp'))
-            markup.row(types.InlineKeyboardButton('سيرفر 2', callback_data='service_smsman'))
-            markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="📞 *اختر الخدمة التي تريد الشراء منها:*", parse_mode='Markdown', reply_markup=markup)
-        
-        elif data == 'Record':
-            balance = users_data.get(str(user_id), {}).get('balance', 0)
-            bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* عملة.", parse_mode='Markdown')
-        
-        elif data == 'back':
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
-            markup.row(types.InlineKeyboardButton('💰︙شحن رصيدك', callback_data='Payment'), types.InlineKeyboardButton('👤︙قسم الرشق', callback_data='sh'))
-            markup.row(types.InlineKeyboardButton('🅿️︙كشف الحساب', callback_data='Record'), types.InlineKeyboardButton('🛍︙قسم العروض', callback_data='Wo'))
-            markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
-            markup.row(types.InlineKeyboardButton('💰︙ربح روبل مجاني 🤑', callback_data='assignment'))
-            markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
-            markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
-            markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
-        
-        elif data.startswith('service_'):
-            service = data.split('_')[1]
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2'))
-            markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3'))
-            markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4'))
-            markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_5'))
-            markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_6'))
-            markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_7"))
-            markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_8'))
-            markup.row(types.InlineKeyboardButton('⁞ إيمو 🐦', callback_data=f'show_countries_{service}_9'))
-            markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_11'))
-            markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13'))
-            markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14'))
-            markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
-            # تم تعديل هذا السطر ليظهر اسم السيرفر للمشرف فقط
-            server_name = 'سيرفر 1' if service == 'viotp' else 'سيرفر 2'
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
-        
-        elif data.startswith('show_countries_'):
-            parts = data.split('_')
-            service, app_id = parts[2], parts[3]
-            page = int(parts[5]) if len(parts) > 5 else 1
-            
-            countries = data_file.get('countries', {}).get(service, {}).get(app_id, {})
-            
-            if not countries:
-                bot.send_message(chat_id, 'لا توجد دول متاحة لهذا التطبيق حاليًا.')
-                return
-
-            items_per_page = 10
-            country_items = list(countries.items())
-            total_pages = (len(country_items) + items_per_page - 1) // items_per_page
-            start_index = (page - 1) * items_per_page
-            end_index = start_index + items_per_page
-            current_countries = country_items[start_index:end_index]
             
             markup = types.InlineKeyboardMarkup()
-            for code, info in current_countries:
-                markup.row(types.InlineKeyboardButton(f"{info['name']} ({info['price']} عملة)", callback_data=f'buy_{service}_{app_id}_{code}'))
+            markup.row(types.InlineKeyboardButton('✅ الحصول على الكود', callback_data=f'get_otp_{service}_{request_id}'))
+            markup.row(types.InlineKeyboardButton('❌ إلغاء الطلب', callback_data=f'cancel_{service}_{request_id}'))
+            bot.send_message(chat_id, f"✅ تم طلب الرقم بنجاح: *{phone_number}*\n\nاضغط على الزر للحصول على الكود أو إلغاء الطلب.", parse_mode='Markdown', reply_markup=markup)
+        else:
+            bot.send_message(chat_id, "❌ فشل طلب الرقم. قد يكون غير متوفر أو أن رصيدك في الخدمة غير كافٍ.")
             
-            nav_buttons = []
-            if page > 1:
-                nav_buttons.append(types.InlineKeyboardButton('◀️ السابق', callback_data=f'show_countries_{service}_{app_id}_page_{page - 1}'))
-            if page < total_pages:
-                nav_buttons.append(types.InlineKeyboardButton('التالي ▶️', callback_data=f'show_countries_{service}_{app_id}_page_{page + 1}'))
-            if nav_buttons:
-                markup.row(*nav_buttons)
-            
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='Buynum'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر الدولة التي تريدها: (صفحة {page}/{total_pages})", reply_markup=markup)
+    elif data.startswith('get_otp_'):
+        parts = data.split('_')
+        service, request_id = parts[2], parts[3]
+        
+        # تم تعديل هذا السطر لاستدعاء الدوال من الكائن
+        if service == 'viotp':
+            result = viotp_client.get_otp(request_id)
+        else:
+            result = get_smsman_code(request_id)
 
-        elif data.startswith('buy_'):
-            parts = data.split('_')
-            service, app_id, country_code = parts[1], parts[2], parts[3]
-            
-            country_info = data_file.get('countries', {}).get(service, {}).get(app_id, {}).get(country_code, {})
-            price = country_info.get('price', 0)
-            
-            user_balance = users_data.get(str(user_id), {}).get('balance', 0)
-            
-            if user_balance < price:
-                bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} عملة.\n*رصيدك الحالي:* {user_balance} عملة.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
-                return
-
-            # تم تعديل هذا السطر لاستدعاء الدوال من الكائن
-            if service == 'viotp':
-                result = viotp_client.buy_number(app_id) # تعديل: خدمة VIOTP لا تستخدم country_code في هذا الرابط
-            else:
-                result = request_smsman_number(app_id, country_code)
-
-            if result and result.get('request_id'):
-                request_id = result.get('request_id')
-                phone_number = result.get('Phone', 'غير متوفر')
-                
-                users_data[str(user_id)]['balance'] -= price
-                save_users(users_data)
-                
-                active_requests = data_file.get('active_requests', {})
-                active_requests[request_id] = {
-                    'user_id': user_id,
-                    'phone_number': phone_number,
-                    'status': 'pending',
-                    'service': service,
-                    'price': price
-                }
+        if result and result.get('Code'):
+            otp_code = result.get('Code')
+            active_requests = data_file.get('active_requests', {})
+            if request_id in active_requests:
+                phone_number = active_requests[request_id]['phone_number']
+                del active_requests[request_id]
                 data_file['active_requests'] = active_requests
                 save_data(data_file)
-                
-                markup = types.InlineKeyboardMarkup()
-                markup.row(types.InlineKeyboardButton('✅ الحصول على الكود', callback_data=f'get_otp_{service}_{request_id}'))
-                markup.row(types.InlineKeyboardButton('❌ إلغاء الطلب', callback_data=f'cancel_{service}_{request_id}'))
-                bot.send_message(chat_id, f"✅ تم طلب الرقم بنجاح: *{phone_number}*\n\nاضغط على الزر للحصول على الكود أو إلغاء الطلب.", parse_mode='Markdown', reply_markup=markup)
+                bot.send_message(chat_id, f"✅ *رمزك هو: {otp_code}*\n\nالرقم: *{phone_number}*", parse_mode='Markdown')
             else:
-                bot.send_message(chat_id, "❌ فشل طلب الرقم. قد يكون غير متوفر أو أن رصيدك في الخدمة غير كافٍ.")
-                
-        elif data.startswith('get_otp_'):
-            parts = data.split('_')
-            service, request_id = parts[2], parts[3]
+                bot.send_message(chat_id, "❌ حدث خطأ، لم يتم العثور على الطلب.")
+        else:
+            bot.send_message(chat_id, "❌ لا يوجد كود حتى الآن. حاول مجدداً.")
             
-            # تم تعديل هذا السطر لاستدعاء الدوال من الكائن
-            if service == 'viotp':
-                result = viotp_client.get_otp(request_id)
-            else:
-                result = get_smsman_code(request_id)
+    elif data.startswith('cancel_'):
+        parts = data.split('_')
+        service, request_id = parts[1], parts[2]
+        
+        # تم تعديل هذا السطر لاستدعاء الدوال من الكائن
+        if service == 'viotp':
+            result = viotp_client.cancel_request(request_id)
+        else:
+            result = cancel_smsman_request(request_id)
+        
+        if result:
+            active_requests = data_file.get('active_requests', {})
+            if request_id in active_requests:
+                request_info = active_requests[request_id]
+                user_id_from_request = request_info['user_id']
+                price_to_restore = request_info['price']
+                
+                users_data = load_users()
+                if str(user_id_from_request) in users_data:
+                    users_data[str(user_id_from_request)]['balance'] += price_to_restore
+                    save_users(users_data)
+                
+                del active_requests[request_id]
+                data_file['active_requests'] = active_requests
+                save_data(data_file)
+            bot.send_message(chat_id, "✅ تم إلغاء الطلب بنجاح. سيتم استرجاع رصيدك.")
+        else:
+            bot.send_message(chat_id, "❌ فشل إلغاء الطلب. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.")
 
-            if result and result.get('Code'):
-                otp_code = result.get('Code')
-                active_requests = data_file.get('active_requests', {})
-                if request_id in active_requests:
-                    phone_number = active_requests[request_id]['phone_number']
-                    del active_requests[request_id]
-                    data_file['active_requests'] = active_requests
-                    save_data(data_file)
-                    bot.send_message(chat_id, f"✅ *رمزك هو: {otp_code}*\n\nالرقم: *{phone_number}*", parse_mode='Markdown')
-                else:
-                    bot.send_message(chat_id, "❌ حدث خطأ، لم يتم العثور على الطلب.")
-            else:
-                bot.send_message(chat_id, "❌ لا يوجد كود حتى الآن. حاول مجدداً.")
-                
-        elif data.startswith('cancel_'):
-            parts = data.split('_')
-            service, request_id = parts[1], parts[2]
-            
-            # تم تعديل هذا السطر لاستدعاء الدوال من الكائن
-            if service == 'viotp':
-                result = viotp_client.cancel_request(request_id)
-            else:
-                result = cancel_smsman_request(request_id)
-            
-            if result:
-                active_requests = data_file.get('active_requests', {})
-                if request_id in active_requests:
-                    request_info = active_requests[request_id]
-                    user_id_from_request = request_info['user_id']
-                    price_to_restore = request_info['price']
-                    
-                    users_data = load_users()
-                    if str(user_id_from_request) in users_data:
-                        users_data[str(user_id_from_request)]['balance'] += price_to_restore
-                        save_users(users_data)
-                    
-                    del active_requests[request_id]
-                    data_file['active_requests'] = active_requests
-                    save_data(data_file)
-                bot.send_message(chat_id, "✅ تم إلغاء الطلب بنجاح. سيتم استرجاع رصيدك.")
-            else:
-                bot.send_message(chat_id, "❌ فشل إلغاء الطلب. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.")
+# The rest of your code ends here.
 
-bot.polling()
+if __name__ == '__main__':
+    bot.set_webhook(url=WEBHOOK_URL + TELEGRAM_BOT_TOKEN, allowed_updates=['message', 'callback_query'])
+    app.run(host='0.0.0.0', port=PORT)
