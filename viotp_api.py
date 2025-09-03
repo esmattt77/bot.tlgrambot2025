@@ -1,4 +1,4 @@
-# viotp_api.py
+ # viotp_api.py
 
 import requests
 import os
@@ -9,21 +9,6 @@ class VIOTPAPI:
         self.api_key = api_key
         # Base URL for the ViOTP API.
         self.base_url = "https://api.viotp.com"
-
-    def get_services_and_countries(self) -> Dict[str, Any]:
-        """Fetches available services and countries from ViOTP."""
-        try:
-            url = "https://viotp.com/api/get-services-and-countries"
-            params = {"apiKey": self.api_key}
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            if data and data.get("success"):
-                return data.get("data", {})
-            return {"success": False, "message": "API response error"}
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching services and countries from VIOTP: {e}")
-            return {"success": False, "message": f"Connection error: {e}"}
 
     def get_balance(self) -> Dict[str, Any]:
         """Fetches the user's account balance from ViOTP."""
