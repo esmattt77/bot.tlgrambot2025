@@ -1,90 +1,62 @@
+# viotp_api.py
+
 import requests
-import json
 import os
+from typing import Dict, Any
 
 class VIOTPAPI:
-    def __init__(self, api_key):
+    def __init__(self, api_key: str):
         self.api_key = api_key
-        self.base_url = "https://viotp.com/api/"
+        # Base URL for the ViOTP API.
+        self.base_url = "https://api.viotp.com"
 
-    def get_services_and_countries(self):
-        url = self.base_url + "get-services-and-countries"
-        params = {"apiKey": self.api_key}
+    def get_balance(self) -> Dict[str, Any]:
+        """Fetches the user's account balance from ViOTP."""
         try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching services and countries: {e}")
-            return None
-
-    def get_balance(self):
-        url = self.base_url + "balance"
-        params = {"apiKey": self.api_key}
-        try:
-            response = requests.get(url, params=params)
+            url = f"{self.base_url}/users/balance?token={self.api_key}"
+            response = requests.get(url, timeout=10)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"Error fetching balance: {e}")
-            return None
+            return {"success": False, "message": f"Connection error: {e}"}
 
-    def buy_number(self, app_id, country_code):
-        url = self.base_url + "buy"
-        params = {
-            "apiKey": self.api_key,
-            "app_id": app_id,
-            "country_code": country_code
-        }
+    def get_services(self) -> Dict[str, Any]:
+        """Fetches the list of available services and their prices."""
         try:
-            response = requests.get(url, params=params)
+            url = f"{self.base_url}/service/getv2?token={self.api_key}"
+            response = requests.get(url, timeout=10)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"Error buying number: {e}")
-            return None
+            return {"success": False, "message": f"Connection error: {e}"}
 
-    def get_otp(self, request_id):
-        url = self.base_url + "get-code"
-        params = {
-            "apiKey": self.api_key,
-            "request_id": request_id
-        }
+    def buy_number(self, service_id: int) -> Dict[str, Any]:
+        """Buys a new number for a specific service."""
         try:
-            response = requests.get(url, params=params)
+            url = f"{self.base_url}/request/getv2?token={self.api_key}&serviceId={service_id}"
+            response = requests.get(url, timeout=10)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"Error getting OTP: {e}")
-            return None
+            return {"success": False, "message": f"Connection error: {e}"}
 
-    def cancel_request(self, request_id):
-        url = self.base_url + "cancel"
-        params = {
-            "apiKey": self.api_key,
-            "request_id": request_id
-        }
+    def get_otp(self, request_id: str) -> Dict[str, Any]:
+        """Fetches the OTP for a purchased number."""
         try:
-            response = requests.get(url, params=params)
+            url = f"{self.base_url}/session/getv2?token={self.api_key}&requestId={request_id}"
+            response = requests.get(url, timeout=10)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"Error cancelling request: {e}")
-            return None
+            return {"success": False, "message": f"Connection error: {e}"}
 
-if __name__ == "__main__":
-    # هذا الجزء لتجربة الكلاس بشكل منفصل
-    # تأكد من وضع مفتاح API الخاص بك في متغير البيئة VIOTP_API_KEY
-    viotp_api_key = os.environ.get('VIOTP_API_KEY')
-    if viotp_api_key:
-        viotp = VIOTPAPI(viotp_api_key)
-        
-        print("Testing get_balance...")
-        balance_data = viotp.get_balance()
-        if balance_data and balance_data.get("success"):
-            print(f"Success! Balance: {balance_data['data']['balance']}")
-        else:
-            print(f"Failed to get balance. Response: {balance_data}")
+    def cancel_request(self, request_id: str) -> Dict[str, Any]:
+        """Cancels a number request. Note: this API might not be officially supported."""
+        try:
+            url = f"{self.base_url}/session/cancelv2?token={self.api_key}&requestId={request_id}"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "message": f"Connection error: {e}"}
 
-    else:
-        print("Please set the VIOTP_API_KEY environment variable.")
