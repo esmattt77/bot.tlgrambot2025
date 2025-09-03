@@ -112,7 +112,7 @@ def handle_text_messages(message):
     elif message.text in ['/balance', 'رصيدي']:
         users_data = load_users()
         balance = users_data.get(str(user_id), {}).get('balance', 0)
-        bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* عملة.", parse_mode='Markdown')
+        bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
     
     if user_id == DEVELOPER_ID:
         if state and state.get('step') == 'waiting_for_add_coin_id':
@@ -133,13 +133,13 @@ def handle_text_messages(message):
                 save_users(users_data)
                 
                 try:
-                    bot.send_message(target_id, f"🎉 تم إضافة {amount} عملة إلى رصيدك من قبل المشرف!")
+                    bot.send_message(target_id, f"🎉 تم إضافة {amount} روبل إلى رصيدك من قبل المشرف!")
                 except telebot.apihelper.ApiException as e:
                     bot.send_message(chat_id, f"✅ تم إضافة الرصيد بنجاح، لكن لا يمكن إرسال رسالة للمستخدم: {e}")
 
                 del data_file['states'][str(user_id)]
                 save_data(data_file)
-                bot.send_message(chat_id, f"✅ تم إضافة {amount} عملة إلى المستخدم ذو الآيدي: {target_id}")
+                bot.send_message(chat_id, f"✅ تم إضافة {amount} روبل إلى المستخدم ذو الآيدي: {target_id}")
             except ValueError:
                 bot.send_message(chat_id, "❌ المبلغ الذي أدخلته غير صحيح. يرجى إدخال رقم.")
         
@@ -161,7 +161,7 @@ def handle_text_messages(message):
                 save_users(users_data)
                 del data_file['states'][str(user_id)]
                 save_data(data_file)
-                bot.send_message(chat_id, f"✅ تم خصم {amount} عملة من المستخدم ذو الآيدي: {target_id}")
+                bot.send_message(chat_id, f"✅ تم خصم {amount} روبل من المستخدم ذو الآيدي: {target_id}")
             except ValueError:
                 bot.send_message(chat_id, "❌ المبلغ الذي أدخلته غير صحيح. يرجى إدخال رقم.")
 
@@ -190,7 +190,7 @@ def handle_text_messages(message):
                 
                 del data_file['states'][str(user_id)]
                 save_data(data_file)
-                bot.send_message(chat_id, f"✅ تم إضافة الدولة **{country_name}** بالرمز **{country_code}** والسعر **{custom_price}** بنجاح لخدمة **{service}**!", parse_mode='Markdown')
+                bot.send_message(chat_id, f"✅ تم إضافة الدولة **{country_name}** بالرمز **{country_code}** والسعر **{custom_price}** روبل بنجاح لخدمة **{service}**!", parse_mode='Markdown')
             except ValueError:
                 bot.send_message(chat_id, "❌ السعر الذي أدخلته غير صحيح. يرجى إدخال رقم.")
         
@@ -200,7 +200,7 @@ def handle_text_messages(message):
             user_info = users_data.get(str(target_id))
             if user_info:
                 balance = user_info.get('balance', 0)
-                bot.send_message(chat_id, f"👤 **معلومات المستخدم:**\n\n**الآيدي:** `{target_id}`\n**الرصيد:** `{balance}` عملة", parse_mode='Markdown')
+                bot.send_message(chat_id, f"👤 **معلومات المستخدم:**\n\n**الآيدي:** `{target_id}`\n**الرصيد:** `{balance}` روبل", parse_mode='Markdown')
             else:
                 bot.send_message(chat_id, "❌ لم يتم العثور على مستخدم بهذا الآيدي.")
             del data_file['states'][str(user_id)]
@@ -216,7 +216,7 @@ def handle_text_messages(message):
                     f"**الآيدي:** `{user_info.get('id', 'غير متوفر')}`\n"
                     f"**الاسم:** `{user_info.get('first_name', 'غير متوفر')}`\n"
                     f"**اسم المستخدم:** `@{user_info.get('username', 'غير متوفر')}`\n"
-                    f"**الرصيد:** `{user_info.get('balance', 0)}` عملة\n"
+                    f"**الرصيد:** `{user_info.get('balance', 0)}` روبل\n"
                     f"**تاريخ الانضمام:** `{user_info.get('join_date', 'غير متوفر')}`"
                 )
                 bot.send_message(chat_id, message_text, parse_mode='Markdown')
@@ -271,7 +271,7 @@ def handle_callback(call):
             bot.send_message(chat_id, "👑 *خدمة الأرقام الملكية قادمة قريباً، تابعنا لمعرفة المزيد.*", parse_mode='Markdown')
             return
         elif data == 'assignment':
-            bot.send_message(chat_id, "💰 *يمكنك ربح عملات مجانية عن طريق إكمال بعض المهام. تابع الإعلانات لمعرفة التفاصيل.*", parse_mode='Markdown')
+            bot.send_message(chat_id, "💰 *يمكنك ربح روبل مجانية عن طريق إكمال بعض المهام. تابع الإعلانات لمعرفة التفاصيل.*", parse_mode='Markdown')
             return
         elif data == 'readycard-10':
             bot.send_message(chat_id, "💳 *متجر الكروت متوفر الآن! تواصل مع الدعم لشراء كرت.*", parse_mode='Markdown')
@@ -289,7 +289,7 @@ def handle_callback(call):
                 f"**الآيدي:** `{user_info.get('id', 'غير متوفر')}`\n"
                 f"**الاسم:** `{user_info.get('first_name', 'غير متوفر')}`\n"
                 f"**اسم المستخدم:** `@{user_info.get('username', 'غير متوفر')}`\n"
-                f"**الرصيد:** `{user_info.get('balance', 0)}` عملة\n"
+                f"**الرصيد:** `{user_info.get('balance', 0)}` روبل\n"
             )
             bot.send_message(chat_id, message_text, parse_mode='Markdown')
             return
@@ -306,7 +306,7 @@ def handle_callback(call):
         
         elif data == 'Record':
             balance = users_data.get(str(user_id), {}).get('balance', 0)
-            bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* عملة.", parse_mode='Markdown')
+            bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
         
         elif data == 'back':
             markup = types.InlineKeyboardMarkup()
@@ -332,6 +332,8 @@ def handle_callback(call):
             markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_8'))
             markup.row(types.InlineKeyboardButton('⁞ إيمو 🐦', callback_data=f'show_countries_{service}_9'))
             markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_11'))
+            markup.row(types.InlineKeyboardButton('⁞ OK 🌟', callback_data=f'show_countries_{service}_12')) # New
+            markup.row(types.InlineKeyboardButton('⁞ Viber 📲', callback_data=f'show_countries_{service}_16')) # New
             markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13'))
             markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14'))
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
@@ -358,7 +360,7 @@ def handle_callback(call):
             
             markup = types.InlineKeyboardMarkup()
             for code, info in current_countries:
-                markup.row(types.InlineKeyboardButton(f"{info['name']} ({info['price']} عملة)", callback_data=f'buy_{service}_{app_id}_{code}'))
+                markup.row(types.InlineKeyboardButton(f"{info['name']} ({info['price']} روبل)", callback_data=f'buy_{service}_{app_id}_{code}'))
             
             nav_buttons = []
             if page > 1:
@@ -381,7 +383,7 @@ def handle_callback(call):
             user_balance = users_data.get(str(user_id), {}).get('balance', 0)
             
             if user_balance < price:
-                bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} عملة.\n*رصيدك الحالي:* {user_balance} عملة.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
+                bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
                 return
 
             if service == 'viotp':
@@ -513,13 +515,13 @@ def handle_callback(call):
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('كشف رصيد ViOTP', callback_data='get_viotp_balance'))
             markup.row(types.InlineKeyboardButton('كشف رصيد SMS.man', callback_data='get_smsman_balance'))
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu')) # Fixed
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="💰 اختر الموقع الذي تريد كشف رصيده:", reply_markup=markup)
         elif data == 'get_viotp_balance':
             viotp_balance_data = viotp_client.get_balance()
             if viotp_balance_data.get('success'):
                 viotp_balance = viotp_balance_data['data']['balance']
-                message = f"💰 رصيد ViOTP الحالي: *{viotp_balance}* عملة."
+                message = f"💰 رصيد ViOTP الحالي: *{viotp_balance}* روبل."
             else:
                 message = "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
             markup = types.InlineKeyboardMarkup()
@@ -527,7 +529,7 @@ def handle_callback(call):
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
         elif data == 'get_smsman_balance':
             smsman_balance = get_smsman_balance()
-            message = f"💰 رصيد SMS.man الحالي:\n• SMS.man: *{smsman_balance}* عملة." if smsman_balance is not False else "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
+            message = f"💰 رصيد SMS.man الحالي:\n• SMS.man: *{smsman_balance}* روبل." if smsman_balance is not False else "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
@@ -543,6 +545,8 @@ def handle_callback(call):
             markup.row(types.InlineKeyboardButton('قوقل 🌐', callback_data=f"add_country_app_{service}_8"))
             markup.row(types.InlineKeyboardButton('إيمو 🐦', callback_data=f"add_country_app_{service}_9"))
             markup.row(types.InlineKeyboardButton('سناب 🐬', callback_data=f"add_country_app_{service}_11"))
+            markup.row(types.InlineKeyboardButton('OK 🌟', callback_data=f"add_country_app_{service}_12")) # New
+            markup.row(types.InlineKeyboardButton('Viber 📲', callback_data=f"add_country_app_{service}_16")) # New
             markup.row(types.InlineKeyboardButton('حراج 🛍', callback_data=f"add_country_app_{service}_13"))
             markup.row(types.InlineKeyboardButton('السيرفر العام ☑️', callback_data=f"add_country_app_{service}_14"))
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='add_country'))
@@ -583,7 +587,7 @@ def handle_callback(call):
 
             markup = types.InlineKeyboardMarkup()
             for code, info in current_countries:
-                price_text = f" - السعر: {info.get('price', 'غير متاح')}" if 'price' in info else ''
+                price_text = f" - السعر: {info.get('price', 'غير متاح')} روبل" if 'price' in info else ''
                 markup.row(types.InlineKeyboardButton(f"{info.get('name', 'غير معروف')}{price_text}", callback_data=f"select_country_{service}_{app_id}_{code}"))
             
             nav_buttons = []
@@ -624,7 +628,7 @@ def handle_callback(call):
                 'country_name': country_name
             }
             save_data(data_file)
-            bot.send_message(chat_id, f"تم اختيار **{country_name}** بسعر أساسي **{api_price}** عملة.\n\nالآن أرسل **السعر الذي تريد بيعه للمستخدمين**.", parse_mode='Markdown')
+            bot.send_message(chat_id, f"تم اختيار **{country_name}** بسعر أساسي **{api_price}** روبل.\n\nالآن أرسل **السعر الذي تريد بيعه للمستخدمين**.", parse_mode='Markdown')
         
         elif data == 'check_user_balance':
             data_file['states'][str(user_id)] = {'step': 'waiting_for_check_user_id'}
