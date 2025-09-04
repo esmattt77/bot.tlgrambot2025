@@ -20,6 +20,7 @@ if not TELEGRAM_BOT_TOKEN or not WEBHOOK_URL:
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 DEVELOPER_ID = int(os.environ.get('DEVELOPER_ID'))
 EESSMT = os.environ.get('EESSMT')
+ESM7TT = os.environ.get('ESM7TT')
 VIOTP_API_KEY = os.environ.get('VIOTP_API_KEY')
 SMSMAN_API_KEY = os.environ.get('SMSMAN_API_KEY')
 
@@ -344,7 +345,7 @@ def handle_callback(call):
             bot.send_message(chat_id, message_text, parse_mode='Markdown')
             return
         elif data == 'super':
-            bot.send_message(chat_id, "📮 *للتواصل مع الدعم الفني، يرجى إرسال رسالتك إلى هذا الحساب: @[ESM7AT].*")
+            bot.send_message(chat_id, "📮 *للتواصل مع الدعم الفني، يرجى إرسال رسالتك إلى هذا الحساب: @{ESM7AT}.*")
             return
 
         elif data == 'Buynum':
