@@ -82,7 +82,7 @@ def register_user(user_id, first_name, username):
 data_file = load_data()
 users_data = load_users()
 
-setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client)
+setup_user_handlers(bot, DEVELOPER_ID, data_file, users_data, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client)
 setup_admin_handlers(bot, DEVELOPER_ID, data_file, users_data, viotp_client, smsman_api, tiger_sms_client)
 
 # --- Webhook Route ---
