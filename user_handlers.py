@@ -3,8 +3,46 @@ from telebot import types
 import json
 import time
 
-# Helper functions to load/save data (assuming they are in bot.py or utils.py)
-# For this example, we will assume they are available through the main bot file.
+# Helper functions to load/save data (assumed to be from bot.py)
+def load_data():
+    try:
+        with open('data.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            if 'sh_services' not in data:
+                data['sh_services'] = {}
+            if 'countries' not in data:
+                data['countries'] = {}
+            return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {'users': {}, 'states': {}, 'countries': {}, 'active_requests': {}, 'sh_services': {}}
+
+def save_data(data):
+    with open('data.json', 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+def load_users():
+    try:
+        with open('users.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def save_users(users):
+    with open('users.json', 'w', encoding='utf-8') as f:
+        json.dump(users, f, indent=4, ensure_ascii=False)
+
+def register_user(user_id, first_name, username):
+    users_data = load_users()
+    if str(user_id) not in users_data:
+        users_data[str(user_id)] = {
+            'id': user_id,
+            'first_name': first_name,
+            'username': username,
+            'balance': 0,
+            'join_date': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+        }
+        save_users(users_data)
+
 
 def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
     
@@ -15,7 +53,6 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
         first_name = message.from_user.first_name
         username = message.from_user.username
         
-        # This part of your code needs to be adapted
         register_user(user_id, first_name, username)
 
         if message.text in ['/start', 'start/', 'بدء/']:
@@ -41,6 +78,8 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
         user_id = call.from_user.id
         message_id = call.message.message_id
         data = call.data
+        data_file = load_data()
+        users_data = load_users()
         
         if data == 'Payment':
             bot.send_message(chat_id, f"💰 *لشحن رصيدك، يرجى التواصل مع المشرف عبر هذا الحساب: @{ESM7AT}.*", parse_mode='Markdown')
@@ -108,14 +147,82 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             bot.send_message(chat_id, f"📮 *للتواصل مع الدعم الفني، يرجى إرسال رسالتك إلى هذا الحساب: @{ESM7AT}.*")
             return
 
+        # --- CORRECTED: 'Buynum' handler ---
         elif data == 'Buynum':
             markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('سيرفر 1', callback_data='service_viotp'))
-            markup.row(types.InlineKeyboardButton('سيرفر 2', callback_data='service_smsman'))
-            markup.row(types.InlineKeyboardButton('سيرفر 3', callback_data='service_tigersms'))
+            countries_by_service = data_file.get('countries', {})
+            
+            viotp_countries = countries_by_service.get('viotp', {})
+            smsman_countries = countries_by_service.get('smsman', {})
+            tigersms_countries = countries_by_service.get('tigersms', {})
+            
+            if viotp_countries:
+                markup.row(types.InlineKeyboardButton('سيرفر 1', callback_data='service_viotp'))
+            if smsman_countries:
+                markup.row(types.InlineKeyboardButton('سيرفر 2', callback_data='service_smsman'))
+            if tigersms_countries:
+                markup.row(types.InlineKeyboardButton('سيرفر 3', callback_data='service_tigersms'))
+
+            if not viotp_countries and not smsman_countries and not tigersms_countries:
+                bot.send_message(chat_id, "❌ لا توجد أي أرقام متاحة حاليًا. يرجى العودة لاحقًا.")
+                return
+
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="📞 *اختر الخدمة التي تريد الشراء منها:*", parse_mode='Markdown', reply_markup=markup)
-        
+
+        # --- CORRECTED: 'service_' handler ---
+        elif data.startswith('service_'):
+            service = data.split('_')[1]
+            markup = types.InlineKeyboardMarkup()
+            service_apps = data_file.get('countries', {}).get(service, {})
+            
+            if service_apps.get('2'):
+                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2'))
+            if service_apps.get('3'):
+                markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3'))
+            if service_apps.get('4'):
+                markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4'))
+            if service_apps.get('5'):
+                markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_5'))
+            if service_apps.get('6'):
+                markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_6'))
+            if service_apps.get('7'):
+                markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_7"))
+            if service_apps.get('8'):
+                markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_8'))
+            if service_apps.get('9'):
+                markup.row(types.InlineKeyboardButton('⁞ إيمو 🐦', callback_data=f'show_countries_{service}_9'))
+            if service_apps.get('11'):
+                markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_11'))
+            if service_apps.get('12'):
+                markup.row(types.InlineKeyboardButton('⁞ OK 🌟', callback_data=f'show_countries_{service}_12'))
+            if service_apps.get('16'):
+                markup.row(types.InlineKeyboardButton('⁞ Viber 📲', callback_data=f'show_countries_{service}_16'))
+            if service_apps.get('13'):
+                markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13'))
+            if service_apps.get('14'):
+                markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14'))
+            
+            if service == 'tigersms':
+                if service_apps.get('wa'): markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_wa'))
+                if service_apps.get('tg'): markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_tg'))
+                if service_apps.get('fb'): markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_fb'))
+                if service_apps.get('ig'): markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_ig'))
+                if service_apps.get('tw'): markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_tw'))
+                if service_apps.get('tt'): markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_tt"))
+                if service_apps.get('go'): markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_go'))
+                if service_apps.get('sn'): markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_sn'))
+                if service_apps.get('ds'): markup.row(types.InlineKeyboardButton('⁞ ديسكورد 🎮', callback_data=f'show_countries_{service}_ds'))
+                if service_apps.get('td'): markup.row(types.InlineKeyboardButton('⁞ تيندر ❤️', callback_data=f'show_countries_{service}_td'))
+                if service_apps.get('ub'): markup.row(types.InlineKeyboardButton('⁞ أوبر 🚕', callback_data=f'show_countries_{service}_ub'))
+                if service_apps.get('ok'): markup.row(types.InlineKeyboardButton('⁞ أوكي 🌟', callback_data=f'show_countries_{service}_ok'))
+                if service_apps.get('li'): markup.row(types.InlineKeyboardButton('⁞ لاين 📲', callback_data=f'show_countries_{service}_li'))
+                if service_apps.get('am'): markup.row(types.InlineKeyboardButton('⁞ أمازون 🛒', callback_data=f'show_countries_{service}_am'))
+            
+            markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
+            server_name = 'سيرفر 1' if service == 'viotp' else ('سيرفر 2' if service == 'smsman' else 'سيرفر 3')
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
+
         elif data == 'Record':
             balance = users_data.get(str(user_id), {}).get('balance', 0)
             bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
@@ -131,65 +238,12 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
             markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
-        
-        elif data.startswith('service_'):
-            service = data.split('_')[1]
-            markup = types.InlineKeyboardMarkup()
-            # Mapping for services
-            if service == 'viotp':
-                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2'))
-                markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3'))
-                markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4'))
-                markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_5'))
-                markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_6'))
-                markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_7"))
-                markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_8'))
-                markup.row(types.InlineKeyboardButton('⁞ إيمو 🐦', callback_data=f'show_countries_{service}_9'))
-                markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_11'))
-                markup.row(types.InlineKeyboardButton('⁞ OK 🌟', callback_data=f'show_countries_{service}_12'))
-                markup.row(types.InlineKeyboardButton('⁞ Viber 📲', callback_data=f'show_countries_{service}_16'))
-                markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13'))
-                markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14'))
-            elif service == 'smsman':
-                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2'))
-                markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3'))
-                markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4'))
-                markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_5'))
-                markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_6'))
-                markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_7"))
-                markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_8'))
-                markup.row(types.InlineKeyboardButton('⁞ إيمو 🐦', callback_data=f'show_countries_{service}_9'))
-                markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_11'))
-                markup.row(types.InlineKeyboardButton('⁞ OK 🌟', callback_data=f'show_countries_{service}_12'))
-                markup.row(types.InlineKeyboardButton('⁞ Viber 📲', callback_data=f'show_countries_{service}_16'))
-                markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13'))
-                markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14'))
-            elif service == 'tigersms':
-                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_wa'))
-                markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_tg'))
-                markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_fb'))
-                markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_ig'))
-                markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_tw'))
-                markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_tt"))
-                markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_go'))
-                markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_sn'))
-                markup.row(types.InlineKeyboardButton('⁞ ديسكورد 🎮', callback_data=f'show_countries_{service}_ds'))
-                markup.row(types.InlineKeyboardButton('⁞ تيندر ❤️', callback_data=f'show_countries_{service}_td'))
-                markup.row(types.InlineKeyboardButton('⁞ أوبر 🚕', callback_data=f'show_countries_{service}_ub'))
-                markup.row(types.InlineKeyboardButton('⁞ أوكي 🌟', callback_data=f'show_countries_{service}_ok'))
-                markup.row(types.InlineKeyboardButton('⁞ لاين 📲', callback_data=f'show_countries_{service}_li'))
-                markup.row(types.InlineKeyboardButton('⁞ أمازون 🛒', callback_data=f'show_countries_{service}_am'))
-            
-            markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
-            server_name = 'سيرفر 1' if service == 'viotp' else ('سيرفر 2' if service == 'smsman' else 'سيرفر 3')
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
 
         elif data.startswith('show_countries_'):
             parts = data.split('_')
             service, app_id = parts[2], parts[3]
             page = int(parts[5]) if len(parts) > 5 else 1
             
-            # Use the local data from the JSON file
             local_countries = data_file.get('countries', {}).get(service, {}).get(app_id, {})
             
             if not local_countries:
@@ -222,10 +276,11 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
         elif data.startswith('buy_'):
             parts = data.split('_')
             service, app_id, country_code = parts[1], parts[2], parts[3]
-            
+            data_file = load_data()
             country_info = data_file.get('countries', {}).get(service, {}).get(app_id, {}).get(country_code, {})
             price = country_info.get('price', 0)
             
+            users_data = load_users()
             user_balance = users_data.get(str(user_id), {}).get('balance', 0)
             
             if user_balance < price:
@@ -267,7 +322,8 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
         elif data.startswith('get_otp_'):
             parts = data.split('_')
             service, request_id = parts[2], parts[3]
-            
+            data_file = load_data()
+
             if service == 'viotp':
                 result = viotp_client.get_otp(request_id)
             elif service == 'smsman':
