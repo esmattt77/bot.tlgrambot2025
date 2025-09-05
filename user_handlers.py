@@ -3,7 +3,6 @@ from telebot import types
 import json
 import time
 
-# Helper functions to load/save data (assumed to be from bot.py)
 def load_data():
     try:
         with open('data.json', 'r', encoding='utf-8') as f:
@@ -46,8 +45,8 @@ def register_user(user_id, first_name, username):
 
 def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
     
-    @bot.message_handler(func=lambda message: True)
-    def handle_user_messages(message):
+    @bot.message_handler(func=lambda message: True, pass_bot=True) # تم إضافة pass_bot=True
+    def handle_user_messages(message, bot):
         chat_id = message.chat.id
         user_id = message.from_user.id
         first_name = message.from_user.first_name
@@ -72,8 +71,8 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             balance = users_data.get(str(user_id), {}).get('balance', 0)
             bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
 
-    @bot.callback_query_handler(func=lambda call: True)
-    def handle_user_callbacks(call):
+    @bot.callback_query_handler(func=lambda call: True, pass_bot=True) # تم إضافة pass_bot=True
+    def handle_user_callbacks(call, bot):
         chat_id = call.message.chat.id
         user_id = call.from_user.id
         message_id = call.message.message_id
@@ -147,7 +146,6 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             bot.send_message(chat_id, f"📮 *للتواصل مع الدعم الفني، يرجى إرسال رسالتك إلى هذا الحساب: @{ESM7AT}.*")
             return
 
-        # --- CORRECTED: 'Buynum' handler ---
         elif data == 'Buynum':
             markup = types.InlineKeyboardMarkup()
             countries_by_service = data_file.get('countries', {})
@@ -170,7 +168,6 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="📞 *اختر الخدمة التي تريد الشراء منها:*", parse_mode='Markdown', reply_markup=markup)
 
-        # --- CORRECTED: 'service_' handler ---
         elif data.startswith('service_'):
             service = data.split('_')[1]
             markup = types.InlineKeyboardMarkup()
