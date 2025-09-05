@@ -430,8 +430,25 @@ def handle_callback(call):
             service, app_id = parts[2], parts[3]
             page = int(parts[5]) if len(parts) > 5 else 1
             
-            countries = data_file.get('countries', {}).get(service, {}).get(app_id, {})
-            
+            # Use the correct API client based on the service
+            if service == 'viotp':
+                # The 'app_id' for viotp is the service ID, so we pass it
+                api_countries_response = viotp_client.get_services()
+                api_countries = {}
+                if api_countries_response.get('success'):
+                    for item in api_countries_response['data']:
+                        if str(item.get('service_id')) == str(app_id):
+                            for country in item.get('countries', []):
+                                api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
+                            break
+            elif service == 'smsman':
+                # The 'app_id' is the service ID for smsman
+                api_countries = get_smsman_countries(app_id)
+            elif service == 'tigersms':
+                # The 'app_id' is the service name for tigersms, so we pass it
+                api_countries = tiger_sms_client.get_countries(app_id)
+
+            countries = api_countries
             if not countries:
                 bot.send_message(chat_id, '❌ لا توجد دول متاحة لهذا التطبيق حاليًا.')
                 return
@@ -744,20 +761,27 @@ def handle_callback(call):
 
         elif data.startswith('select_country_'):
             parts = data.split('_')
-            service, app_id, country_code = parts[2], parts[3], parts[4]
-            if service == 'viotp':
-                api_countries = {}
-                api_services_data = viotp_client.get_services()
-                if api_services_data.get('success') and 'data' in api_services_data:
-                    for item in api_services_data['data']:
-                        if str(item.get('service_id')) == str(app_id):
-                            for country in item.get('countries', []):
-                                api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
-                            break
-            elif service == 'smsman':
-                api_countries = get_smsman_countries(app_id)
-            elif service == 'tigersms':
-                api_countries = tiger_sms_client.get_countries(app_id)
+            service = parts[2]
+            app_id = parts[3]
+            country_code = parts[4]
+
+            try:
+                if service == 'viotp':
+                    api_countries = {}
+                    api_services_data = viotp_client.get_services()
+                    if api_services_data.get('success') and 'data' in api_services_data:
+                        for item in api_services_data['data']:
+                            if str(item.get('service_id')) == str(app_id):
+                                for country in item.get('countries', []):
+                                    api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
+                                break
+                elif service == 'smsman':
+                    api_countries = get_smsman_countries(app_id)
+                elif service == 'tigersms':
+                    api_countries = tiger_sms_client.get_countries(app_id)
+            except Exception as e:
+                bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}')
+                return
                 
             country_info = api_countries.get(country_code, {})
             country_name = country_info.get('name')
@@ -839,4 +863,3 @@ def handle_callback(call):
 if __name__ == '__main__':
     bot.set_webhook(url=WEBHOOK_URL + TELEGRAM_BOT_TOKEN, allowed_updates=['message', 'callback_query'])
     app.run(host='0.0.0.0', port=PORT)
-
