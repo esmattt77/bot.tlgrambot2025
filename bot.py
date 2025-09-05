@@ -6,7 +6,7 @@ import requests
 import os
 from viotp_api import VIOTPAPI
 from smsman_api import get_smsman_balance, get_smsman_countries, request_smsman_number, get_smsman_code, cancel_smsman_request
-from tiger_sms_api import TigerSMSAPI # New Import
+from tiger_sms_api import TigerSMSAPI
 from flask import Flask, request
 
 # Read bot token from environment variables
@@ -21,14 +21,14 @@ if not TELEGRAM_BOT_TOKEN or not WEBHOOK_URL:
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 DEVELOPER_ID = int(os.environ.get('DEVELOPER_ID'))
 EESSMT = os.environ.get('EESSMT')
-ESM7AT = os.environ.get('ESM7AT') # New Variable for support contact
+ESM7AT = os.environ.get('ESM7AT')
 VIOTP_API_KEY = os.environ.get('VIOTP_API_KEY')
 SMSMAN_API_KEY = os.environ.get('SMSMAN_API_KEY')
-TIGER_SMS_API_KEY = os.environ.get('TIGER_SMS_API_KEY') # New API Key
+TIGER_SMS_API_KEY = os.environ.get('TIGER_SMS_API_KEY')
 
 # Create API client objects
 viotp_client = VIOTPAPI(VIOTP_API_KEY)
-tiger_sms_client = TigerSMSAPI(TIGER_SMS_API_KEY) # New API Client
+tiger_sms_client = TigerSMSAPI(TIGER_SMS_API_KEY)
 
 # Create a Flask app instance
 app = Flask(__name__)
@@ -191,10 +191,10 @@ def handle_text_messages(message):
 
                 if service not in data_file['countries']:
                     data_file['countries'][service] = {}
-                if str(app_id) not in data_file['countries'][service]:
-                    data_file['countries'][service][str(app_id)] = {}
+                if app_id not in data_file['countries'][service]:
+                    data_file['countries'][service][app_id] = {}
                 
-                data_file['countries'][service][str(app_id)][country_code] = {'name': country_name, 'price': custom_price}
+                data_file['countries'][service][app_id][country_code] = {'name': country_name, 'price': custom_price}
                 
                 del data_file['states'][str(user_id)]
                 save_data(data_file)
@@ -353,7 +353,7 @@ def handle_callback(call):
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('سيرفر 1', callback_data='service_viotp'))
             markup.row(types.InlineKeyboardButton('سيرفر 2', callback_data='service_smsman'))
-            markup.row(types.InlineKeyboardButton('سيرفر 3', callback_data='service_tigersms')) # New Server
+            markup.row(types.InlineKeyboardButton('سيرفر 3', callback_data='service_tigersms'))
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="📞 *اختر الخدمة التي تريد الشراء منها:*", parse_mode='Markdown', reply_markup=markup)
         
@@ -405,21 +405,21 @@ def handle_callback(call):
                 markup.row(types.InlineKeyboardButton('⁞ Viber 📲', callback_data=f'show_countries_{service}_16'))
                 markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13'))
                 markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14'))
-            elif service == 'tigersms': # Tiger SMS services
-                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_wa'))
-                markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_tg'))
-                markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_fb'))
-                markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_ig'))
-                markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_tw'))
-                markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_tk"))
-                markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_go'))
-                markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_sn'))
-                markup.row(types.InlineKeyboardButton('⁞ ديسكورد 🎮', callback_data=f'show_countries_{service}_ds'))
-                markup.row(types.InlineKeyboardButton('⁞ تيندر ❤️', callback_data=f'show_countries_{service}_td'))
-                markup.row(types.InlineKeyboardButton('⁞ أوبر 🚕', callback_data=f'show_countries_{service}_ub'))
+            elif service == 'tigersms':
+                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_whatsapp'))
+                markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_telegram'))
+                markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_facebook'))
+                markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_instagram'))
+                markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_twitter'))
+                markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_tiktok"))
+                markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_google'))
+                markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_snapchat'))
+                markup.row(types.InlineKeyboardButton('⁞ ديسكورد 🎮', callback_data=f'show_countries_{service}_discord'))
+                markup.row(types.InlineKeyboardButton('⁞ تيندر ❤️', callback_data=f'show_countries_{service}_tinder'))
+                markup.row(types.InlineKeyboardButton('⁞ أوبر 🚕', callback_data=f'show_countries_{service}_uber'))
                 markup.row(types.InlineKeyboardButton('⁞ أوكي 🌟', callback_data=f'show_countries_{service}_ok'))
-                markup.row(types.InlineKeyboardButton('⁞ لاين 📲', callback_data=f'show_countries_{service}_li'))
-                markup.row(types.InlineKeyboardButton('⁞ أمازون 🛒', callback_data=f'show_countries_{service}_am'))
+                markup.row(types.InlineKeyboardButton('⁞ لاين 📲', callback_data=f'show_countries_{service}_line'))
+                markup.row(types.InlineKeyboardButton('⁞ أمازون 🛒', callback_data=f'show_countries_{service}_amazon'))
             
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
             server_name = 'سيرفر 1' if service == 'viotp' else ('سيرفر 2' if service == 'smsman' else 'سيرفر 3')
@@ -433,7 +433,7 @@ def handle_callback(call):
             countries = data_file.get('countries', {}).get(service, {}).get(app_id, {})
             
             if not countries:
-                bot.send_message(chat_id, 'لا توجد دول متاحة لهذا التطبيق حاليًا.')
+                bot.send_message(chat_id, '❌ لا توجد دول متاحة لهذا التطبيق حاليًا.')
                 return
 
             items_per_page = 10
@@ -592,7 +592,7 @@ def handle_callback(call):
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('ViOTP', callback_data='add_country_service_viotp'))
             markup.row(types.InlineKeyboardButton('SMS.man', callback_data='add_country_service_smsman'))
-            markup.row(types.InlineKeyboardButton('Tiger SMS', callback_data='add_country_service_tigersms')) # New Option
+            markup.row(types.InlineKeyboardButton('Tiger SMS', callback_data='add_country_service_tigersms'))
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='🌐 اختر الخدمة لإضافة دولة:', reply_markup=markup)
         elif data == 'bot_stats':
@@ -609,7 +609,7 @@ def handle_callback(call):
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('كشف رصيد ViOTP', callback_data='get_viotp_balance'))
             markup.row(types.InlineKeyboardButton('كشف رصيد SMS.man', callback_data='get_smsman_balance'))
-            markup.row(types.InlineKeyboardButton('كشف رصيد Tiger SMS', callback_data='get_tigersms_balance')) # New Option
+            markup.row(types.InlineKeyboardButton('كشف رصيد Tiger SMS', callback_data='get_tigersms_balance'))
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="💰 اختر الموقع الذي تريد كشف رصيده:", reply_markup=markup)
         
@@ -672,21 +672,21 @@ def handle_callback(call):
                 markup.row(types.InlineKeyboardButton('Viber 📲', callback_data=f"add_country_app_{service}_16"))
                 markup.row(types.InlineKeyboardButton('حراج 🛍', callback_data=f"add_country_app_{service}_13"))
                 markup.row(types.InlineKeyboardButton('السيرفر العام ☑️', callback_data=f"add_country_app_{service}_14"))
-            elif service == 'tigersms': # New Apps for Tiger SMS
-                markup.row(types.InlineKeyboardButton('واتسأب 💬', callback_data=f"add_country_app_{service}_wa"))
-                markup.row(types.InlineKeyboardButton('تيليجرام 📢', callback_data=f"add_country_app_{service}_tg"))
-                markup.row(types.InlineKeyboardButton('فيسبوك 🏆', callback_data=f"add_country_app_{service}_fb"))
-                markup.row(types.InlineKeyboardButton('إنستقرام 🎥', callback_data=f"add_country_app_{service}_ig"))
-                markup.row(types.InlineKeyboardButton('تويتر 🚀', callback_data=f"add_country_app_{service}_tw"))
-                markup.row(types.InlineKeyboardButton('تيكتوك 🎬', callback_data=f"add_country_app_{service}_tk"))
-                markup.row(types.InlineKeyboardButton('قوقل 🌐', callback_data=f'add_country_app_{service}_go'))
-                markup.row(types.InlineKeyboardButton('سناب 🐬', callback_data=f'add_country_app_{service}_sn'))
-                markup.row(types.InlineKeyboardButton('ديسكورد 🎮', callback_data=f'add_country_app_{service}_ds'))
-                markup.row(types.InlineKeyboardButton('تيندر ❤️', callback_data=f'add_country_app_{service}_td'))
-                markup.row(types.InlineKeyboardButton('أوبر 🚕', callback_data=f'add_country_app_{service}_ub'))
+            elif service == 'tigersms':
+                markup.row(types.InlineKeyboardButton('واتسأب 💬', callback_data=f"add_country_app_{service}_whatsapp"))
+                markup.row(types.InlineKeyboardButton('تيليجرام 📢', callback_data=f"add_country_app_{service}_telegram"))
+                markup.row(types.InlineKeyboardButton('فيسبوك 🏆', callback_data=f"add_country_app_{service}_facebook"))
+                markup.row(types.InlineKeyboardButton('إنستقرام 🎥', callback_data=f"add_country_app_{service}_instagram"))
+                markup.row(types.InlineKeyboardButton('تويتر 🚀', callback_data=f"add_country_app_{service}_twitter"))
+                markup.row(types.InlineKeyboardButton('تيكتوك 🎬', callback_data=f"add_country_app_{service}_tiktok"))
+                markup.row(types.InlineKeyboardButton('قوقل 🌐', callback_data=f'add_country_app_{service}_google'))
+                markup.row(types.InlineKeyboardButton('سناب 🐬', callback_data=f'add_country_app_{service}_snapchat'))
+                markup.row(types.InlineKeyboardButton('ديسكورد 🎮', callback_data=f'add_country_app_{service}_discord'))
+                markup.row(types.InlineKeyboardButton('تيندر ❤️', callback_data=f'add_country_app_{service}_tinder'))
+                markup.row(types.InlineKeyboardButton('أوبر 🚕', callback_data=f'add_country_app_{service}_uber'))
                 markup.row(types.InlineKeyboardButton('أوكي 🌟', callback_data=f'add_country_app_{service}_ok'))
-                markup.row(types.InlineKeyboardButton('لاين 📲', callback_data=f'add_country_app_{service}_li'))
-                markup.row(types.InlineKeyboardButton('أمازون 🛒', callback_data=f'add_country_app_{service}_am'))
+                markup.row(types.InlineKeyboardButton('لاين 📲', callback_data=f'add_country_app_{service}_line'))
+                markup.row(types.InlineKeyboardButton('أمازون 🛒', callback_data=f'add_country_app_{service}_amazon'))
             
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='add_country'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='📱 اختر التطبيق:', reply_markup=markup)
@@ -709,7 +709,7 @@ def handle_callback(call):
                                 break
                 elif service == 'smsman':
                     api_countries = get_smsman_countries(app_id)
-                elif service == 'tigersms': # Fetching countries from Tiger SMS API
+                elif service == 'tigersms':
                     api_countries = tiger_sms_client.get_countries(app_id)
             except Exception as e:
                 bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}')
@@ -821,7 +821,7 @@ def handle_callback(call):
                 bot.send_message(chat_id, f"✅ تم حذف خدمة `{service_name_to_delete}` بنجاح.")
             else:
                 bot.send_message(chat_id, "❌ الخدمة غير موجودة.")
-            handle_callback(call) # Re-run callback to show updated menu
+            handle_callback(call)
         
         elif data == 'view_sh_services':
             sh_services = data_file.get('sh_services', {})
@@ -839,3 +839,4 @@ def handle_callback(call):
 if __name__ == '__main__':
     bot.set_webhook(url=WEBHOOK_URL + TELEGRAM_BOT_TOKEN, allowed_updates=['message', 'callback_query'])
     app.run(host='0.0.0.0', port=PORT)
+
