@@ -12,7 +12,7 @@ def load_data():
             if 'countries' not in data:
                 data['countries'] = {}
             return data
-    except (FileNotFoundEror, json.JSONDecodeError):
+    except (FileNotFoundError, json.JSONDecodeError):
         return {'users': {}, 'states': {}, 'countries': {}, 'active_requests': {}, 'sh_services': {}}
 
 def save_data(data):
@@ -55,7 +55,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, data_file, users_data, ESM7AT, EESSMT
         register_user(user_id, first_name, username)
 
         if message.text in ['/start', 'start/', 'بدء/']:
-            # --- تم إضافة هذا الشرط للتمييز بين المستخدم والمشرف ---
             if user_id == DEVELOPER_ID:
                 markup = types.InlineKeyboardMarkup()
                 markup.row(types.InlineKeyboardButton('إحصائيات البوت 📊', callback_data='bot_stats'), types.InlineKeyboardButton('إدارة المستخدمين 👥', callback_data='manage_users'))
