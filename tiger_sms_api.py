@@ -27,34 +27,22 @@ class TigerSMSAPI:
         else:
             return {'success': False, 'error': response}
 
-    def get_services_with_prices(self):
+    def get_countries(self, service_name):
         params = {'action': 'getPrices'}
         response = self._make_request(params)
         if response.startswith('ERROR'):
-            return {'success': False, 'error': response}
-        try:
-            data = json.loads(response)
-            return {'success': True, 'data': data}
-        except json.JSONDecodeError:
-            return {'success': False, 'error': 'Invalid JSON response from API'}
-
-    def get_countries(self, service_name):
-        params = {'action': 'getPrices', 'service': service_name}
-        response = self._make_request(params)
-        if response.startswith('ERROR'):
             return {}
         try:
             data = json.loads(response)
-            if service_name in data:
-                countries = {}
-                for country_id, country_info in data[service_name].items():
+            countries = {}
+            for country_id, services_info in data.items():
+                if service_name in services_info and services_info[service_name]['count'] > 0:
                     countries[country_id] = {
                         'name': self._get_country_name(country_id),
-                        'price': country_info.get('price'),
-                        'count': country_info.get('phones')
+                        'price': services_info[service_name].get('cost'),
+                        'count': services_info[service_name].get('count')
                     }
-                return countries
-            return {}
+            return countries
         except json.JSONDecodeError:
             return {}
 
