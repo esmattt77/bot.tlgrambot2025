@@ -117,7 +117,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
                 markup.row(types.InlineKeyboardButton('💰︙ربح روبل مجاني 🤑', callback_data='assignment'))
                 markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
-                markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
+                markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.row(types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
                 markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
                 bot.send_message(chat_id, f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
             else:
@@ -150,7 +150,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             try:
                 # إنشاء رابط دعوة ببارامتر /start الخاص بالمستخدم
                 # NOTE: The bot must be an admin in the group.
-                invite_link = bot.create_chat_invite_link(GROUP_ID, creates_join_request=False, member_limit=1, name=str(user_id)).invite_link
+                invite_link = bot.create_chat_invite_link(GROUP_ID, creates_join_request=False, name=str(user_id)).invite_link
                 
                 # إرسال الرسالة مع الرابط
                 message_text = (
