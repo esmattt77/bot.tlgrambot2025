@@ -1,11 +1,12 @@
 from telebot import types
 import json
 import time
+from telebot.apihelper import ApiTelegramException
 
 # --- المتغيرات الخاصة بالقناة والمجموعة (قم بتحديثها) ---
 CHANNEL_USERNAME = "EESSMT"  # قم بتغيير هذا بـ اسم مستخدم قناتك بدون @
 GROUP_USERNAME = "wwesmaat"      # قم بتغيير هذا بـ اسم مستخدم مجموعتك بدون @
-GROUP_ID = -1001158537466                  # قم بتغيير هذا بـ ID مجموعتك (يجب أن يبدأ بـ -100)
+GROUP_ID = -1002691575929             # <<< قم بتغيير هذا بـ ID مجموعتك (يجب أن يبدأ بـ -100) >>>
 
 # --- Helper Functions (Shared) ---
 def load_data():
@@ -21,7 +22,7 @@ def load_data():
             if 'active_requests' not in data:
                 data['active_requests'] = {}
             return data
-    except (FileNotFoundEror, json.JSONDecodeError):
+    except (FileNotFoundError, json.JSONDecodeError):
         return {'users': {}, 'states': {}, 'countries': {}, 'active_requests': {}, 'sh_services': {}}
 
 def save_data(data):
@@ -159,8 +160,16 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     "_*ملاحظة: تأكد من أن المستخدم الجديد لا يمتلك حسابًا في البوت مسبقاً.*_"
                 )
                 bot.send_message(chat_id, message_text, parse_mode='Markdown')
+            except ApiTelegramException as e:
+                if "Bad Request: not enough rights" in str(e):
+                    error_message = "❌ البوت ليس مشرفًا في المجموعة أو ليس لديه صلاحية 'دعوة المستخدمين عبر الرابط'."
+                elif "Bad Request: chat not found" in str(e):
+                    error_message = "❌ معرف المجموعة (Group ID) غير صحيح."
+                else:
+                    error_message = f"❌ حدث خطأ غير معروف: {e}"
+                bot.send_message(chat_id, f"**عذراً، لا يمكن إنشاء رابط إحالة الآن.**\n\n{error_message}", parse_mode='Markdown')
             except Exception as e:
-                bot.send_message(chat_id, f"❌ حدث خطأ أثناء إنشاء رابط الإحالة. يرجى التأكد من أن البوت مشرف في المجموعة ولديه الصلاحيات اللازمة.\n\n`{e}`", parse_mode='Markdown')
+                bot.send_message(chat_id, f"❌ حدث خطأ أثناء إنشاء رابط الإحالة: {e}")
             return
 
         elif data == 'check_subscription':
