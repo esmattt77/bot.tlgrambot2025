@@ -3,10 +3,10 @@ import json
 import time
 from telebot.apihelper import ApiTelegramException
 
-# --- المتغيرات الخاصة بالقناة والمجموعة (قم بتحديثها) ---
-CHANNEL_USERNAME = "EESSMT"  # قم بتغيير هذا بـ اسم مستخدم قناتك بدون @
-GROUP_USERNAME = "wwesmaat"      # قم بتغيير هذا بـ اسم مستخدم مجموعتك بدون @
-GROUP_ID = -1002691575929             # <<< قم بتغيير هذا بـ ID مجموعتك (يجب أن يبدأ بـ -100) >>>
+# --- المتغيرات الخاصة بالقناة والمجموعة (قم بتحديثها)
+CHANNEL_USERNAME = "YourChannelUsername"  
+GROUP_USERNAME = "YourGroupUsername"      
+GROUP_ID = YOUR_GROUP_ID_HERE             
 
 # --- Helper Functions (Shared) ---
 def load_data():
@@ -50,7 +50,7 @@ def register_user(user_id, first_name, username):
             'balance': 0,
             'join_date': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime()),
             'has_received_bonus': False,
-            'has_referrer': False  # NEW FIELD
+            'has_referrer': False  
         }
         save_users(users_data)
 
@@ -67,12 +67,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         register_user(user_id, first_name, username)
         user_info = users_data.get(str(user_id))
         
-        # --- NEW REFERRAL LOGIC IN START COMMAND ---
         if message.text.startswith('/start'):
-            # Check for a referral code
             start_parameter = message.text.split(' ')[1] if len(message.text.split(' ')) > 1 else None
             
-            # Check if this is a new user AND if a referrer is provided
             if start_parameter and str(user_id) not in users_data:
                 referrer_id = start_parameter
                 if referrer_id != str(user_id):
@@ -88,7 +85,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         except Exception as e:
                             print(f"Failed to notify referrer: {e}")
 
-            # --- Forced Subscription Logic ---
             has_joined_channel = False
             has_joined_group = False
             
@@ -117,7 +113,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
                 markup.row(types.InlineKeyboardButton('💰︙ربح روبل مجاني 🤑', callback_data='assignment'))
                 markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
-                markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.row(types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
+                markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
                 markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
                 bot.send_message(chat_id, f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
             else:
@@ -148,11 +144,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
 
         if data == 'assignment':
             try:
-                # إنشاء رابط دعوة ببارامتر /start الخاص بالمستخدم
-                # NOTE: The bot must be an admin in the group.
                 invite_link = bot.create_chat_invite_link(GROUP_ID, creates_join_request=False, name=str(user_id)).invite_link
                 
-                # إرسال الرسالة مع الرابط
                 message_text = (
                     f"🔗 **رابط إحالتك الشخصي:** `{invite_link}`\n\n"
                     "**انسخ الرابط وشاركه مع أصدقائك!** 📥\n"
