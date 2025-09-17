@@ -4,9 +4,9 @@ import time
 from telebot.apihelper import ApiTelegramException
 
 # --- المتغيرات الخاصة بالقناة والمجموعة (قم بتحديثها)
-CHANNEL_USERNAME = "YourChannelUsername"  
-GROUP_USERNAME = "YourGroupUsername"      
-GROUP_ID = YOUR_GROUP_ID_HERE             
+CHANNEL_USERNAME = "EESSMT"  
+GROUP_USERNAME = "wwesmaat"      
+GROUP_ID = -1002691575929             
 
 # --- Helper Functions (Shared) ---
 def load_data():
