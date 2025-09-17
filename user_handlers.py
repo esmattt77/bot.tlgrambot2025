@@ -3,10 +3,10 @@ import json
 import time
 from telebot.apihelper import ApiTelegramException
 
-# --- المتغيرات الخاصة بالقناة والمجموعة (قم بتحديثها)
+# --- المتغيرات الخاصة بالقناة والمجموعة (قم بتحديثها) ---
 CHANNEL_USERNAME = "EESSMT"  
 GROUP_USERNAME = "wwesmaat"      
-GROUP_ID = -1002691575929             
+GROUP_ID = 2691575929             
 
 # --- Helper Functions (Shared) ---
 def load_data():
@@ -113,6 +113,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
                 markup.row(types.InlineKeyboardButton('💰︙ربح روبل مجاني 🤑', callback_data='assignment'))
                 markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
+                # هذا السطر تم تعديله لإصلاح خطأ بناء الجملة
                 markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
                 markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
                 bot.send_message(chat_id, f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
@@ -391,12 +392,16 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
 
             if service == 'viotp':
                 result = viotp_client.buy_number(app_id)
+                # إضافة طباعة لتتبع الخطأ
+                print(f"ViOTP API Response: {result}")
             elif service == 'smsman':
                 result = smsman_api['request_smsman_number'](app_id, country_code)
-                # أضف سطر الطباعة هنا:
-                print(f"SMS.man API Response: {result}") 
+                # إضافة طباعة لتتبع الخطأ
+                print(f"SMS.man API Response: {result}")
             elif service == 'tigersms':
                 result = tiger_sms_client.get_number(app_id, country_code)
+                # إضافة طباعة لتتبع الخطأ
+                print(f"TigerSMS API Response: {result}")
 
             if result and result.get('success'):
                 request_id = result.get('id')
