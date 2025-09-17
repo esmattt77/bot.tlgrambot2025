@@ -6,7 +6,7 @@ from telebot.apihelper import ApiTelegramException
 # --- المتغيرات الخاصة بالقناة والمجموعة (قم بتحديثها) ---
 CHANNEL_USERNAME = "EESSMT"  
 GROUP_USERNAME = "wwesmaat"      
-GROUP_ID = 2691575929             
+GROUP_ID = -1002691575929             
 
 # --- Helper Functions (Shared) ---
 def load_data():
