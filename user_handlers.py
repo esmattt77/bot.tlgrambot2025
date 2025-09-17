@@ -393,6 +393,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 result = viotp_client.buy_number(app_id)
             elif service == 'smsman':
                 result = smsman_api['request_smsman_number'](app_id, country_code)
+                # أضف سطر الطباعة هنا:
+                print(f"SMS.man API Response: {result}") 
             elif service == 'tigersms':
                 result = tiger_sms_client.get_number(app_id, country_code)
 
