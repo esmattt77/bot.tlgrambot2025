@@ -1,12 +1,12 @@
 # smsman_api.py
 import json
 import requests
-
 import os
+
+# Get SMSMAN_API_KEY from environment variables
 SMSMAN_API_KEY = os.environ.get('SMSMAN_API_KEY')
 
 # A dictionary to map SMS-Man internal codes to country names and flags
-# This is a direct translation of the PHP array you provided
 smsman_country_map = {
     "49": "لاتفيا 🇱🇻", "21": "مصر 🇪🇬", "50": "النمسا 🇦🇹", "6": "إندونيسيا 🇮🇩",
     "24": "كمبوديا 🇰🇭", "77": "قبرص 🇨🇾", "84": "المجر 🇭🇺", "175": "استراليا 🇦🇺",
@@ -62,30 +62,27 @@ def smsman_api_call(action, params=None):
         response.raise_for_status()  # Raise an exception for HTTP errors
         return response.text
     except requests.exceptions.RequestException as e:
-        # Added a print statement to help with debugging
         print(f"Error making SMS-Man API call: {e}")
         return 'ERROR_REQUEST_FAILED'
 
 def get_smsman_balance():
     response = smsman_api_call('getBalance')
-    # If the API call fails, the response will be 'ERROR_REQUEST_FAILED'
     if response == 'ERROR_REQUEST_FAILED':
-        return False
+        return {'success': False, 'error': 'Request to API failed.'}
         
     if response.startswith('ACCESS_BALANCE:'):
         try:
             balance = float(response.split(':')[1])
-            return balance
+            return {'success': True, 'balance': balance}
         except (ValueError, IndexError):
-            # If parsing the response fails, it's a bad response
             print("Error parsing SMS-Man balance response.")
-            return False
-    return False
+            return {'success': False, 'error': 'Error parsing balance response.'}
+    return {'success': False, 'error': response}
 
 def request_smsman_number(service_id, country_code):
     service_name = service_map.get(str(service_id))
     if not service_name:
-        return False
+        return {'success': False, 'error': 'Service name not found.'}
 
     response = smsman_api_call('getNumber', {
         'service': service_name,
@@ -93,69 +90,79 @@ def request_smsman_number(service_id, country_code):
     })
 
     if response == 'ERROR_REQUEST_FAILED':
-        return False
+        return {'success': False, 'error': 'Request to API failed.'}
 
-    if response.startswith('ACCESS_NUMBER:'):
+    if not response.startswith('ACCESS_NUMBER:'):
+        return {'success': False, 'error': response}
+
+    try:
         parts = response.split(':')
+        request_id = parts[1]
+        phone_number = parts[2]
         return {
-            'request_id': parts[1],
-            'Phone': parts[2],
+            'success': True,
+            'id': request_id,
+            'number': phone_number,
         }
-    return {'status': 'error', 'message': response}
+    except (ValueError, IndexError):
+        return {'success': False, 'error': 'Failed to parse API response.'}
 
 def get_smsman_code(request_id):
     response = smsman_api_call('getStatus', {'id': request_id})
     
     if response == 'ERROR_REQUEST_FAILED':
-        return False
+        return {'success': False, 'error': 'Request to API failed.'}
 
     if response.startswith('STATUS_OK:'):
         code = response.split(':')[1]
-        return {'status': 'success', 'Code': code}
+        return {'success': True, 'code': code}
     elif response == 'STATUS_WAIT_CODE':
-        return {'status': 'pending'}
+        return {'success': False, 'status': 'pending'}
 
-    return {'status': 'error', 'message': response}
+    return {'success': False, 'error': response}
 
-def cancel_smsman_request(request_id):
+def cancel_smsman_number(request_id):
     response = smsman_api_call('setStatus', {'id': request_id, 'status': -1})
 
     if response == 'ERROR_REQUEST_FAILED':
-        return False
+        return {'success': False, 'error': 'Request to API failed.'}
         
     if response == 'STATUS_CANCEL':
-        return {'status': 'success', 'message': 'CANCELED'}
-    return {'status': 'error', 'message': response}
-
+        return {'success': True}
+    return {'success': False, 'error': response}
+    
 def get_smsman_countries(app_id):
     service_name = service_map.get(str(app_id))
     if not service_name:
-        return False
+        return {'success': False, 'error': 'Service not found.'}
 
     response_json = smsman_api_call('getPrices', {'service': service_name})
     
     if response_json == 'ERROR_REQUEST_FAILED':
-        return {}
-
-    countries_data = {}
+        return {'success': False, 'error': 'Request to API failed.'}
+    
     try:
-        data =البيانات = json.loads(response_json)
-        if isinstance(data, dict):
-            for country_code, service_info in data.items():
-                if service_name in service_info and float(service_info[service_name]['cost']) > 0:
-                    country_display_name = smsman_country_map.get(country_code, country_code)
+        data = json.loads(response_json)
+        # The API returns an error message as a string if there's an issue
+        if isinstance(data, str):
+             return {'success': False, 'error': data}
+        
+        countries_data = {}
+        for country_code, services in data.get('price', {}).items():
+            if service_name in services:
+                service_info = services[service_name]
+                if service_info['count'] > 0:
+                    country_display_name = smsman_country_map.get(country_code, f"غير معروف ({country_code})")
                     
                     countries_data[country_code] = {
-                        'code': country_code,
                         'name': country_display_name,
-                        'flag': '', # Flags are included in the name string
-                        'price': float(service_info[service_name]['cost']),
-                        'count': int(service_info[service_name]['count'])
+                        'price': float(service_info['price']),
+                        'count': int(service_info['count'])
                     }
-    except (requests.exceptions.JSONDecodeError, ValueError) as e:
-        # Added a print statement to help with debugging
-        print(f"Error parsing SMS-Man countries JSON: {e}")
-        return {}
 
-    return countries_data
+        return {'success': True, 'countries': countries_data}
+    
+    except (json.JSONDecodeError, ValueError, KeyError) as e:
+        print(f"Error parsing SMS-Man JSON response: {e}")
+        return {'success': False, 'error': f"Failed to parse API response: {e}"}
 
