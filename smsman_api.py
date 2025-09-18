@@ -1,8 +1,9 @@
 # smsman_api.py
+import json
 import requests
 
-# Assuming config.py is in the same directory and contains SMSMAN_API_KEY
-from config import SMSMAN_API_KEY
+import os
+SMSMAN_API_KEY = os.environ.get('SMSMAN_API_KEY')
 
 # A dictionary to map SMS-Man internal codes to country names and flags
 # This is a direct translation of the PHP array you provided
@@ -138,7 +139,7 @@ def get_smsman_countries(app_id):
 
     countries_data = {}
     try:
-        data = requests.json.loads(response_json)
+        data =البيانات = json.loads(response_json)
         if isinstance(data, dict):
             for country_code, service_info in data.items():
                 if service_name in service_info and float(service_info[service_name]['cost']) > 0:
@@ -157,4 +158,3 @@ def get_smsman_countries(app_id):
         return {}
 
     return countries_data
-
