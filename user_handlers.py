@@ -139,6 +139,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         user_id = call.from_user.id
         message_id = call.message.message_id
         data = call.data
+          # أضف هذا السطر هنا لتتبع البيانات الخام
+        print(f"Received callback data: {data}")
         
         data_file = load_data()
         users_data = load_users()
