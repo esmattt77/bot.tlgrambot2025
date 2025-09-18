@@ -2,11 +2,13 @@ from telebot import types
 import json
 import time
 from telebot.apihelper import ApiTelegramException
+import requests
+import os
 
 # --- المتغيرات الخاصة بالقناة والمجموعة (قم بتحديثها) ---
 CHANNEL_USERNAME = "EESSMT"  
 GROUP_USERNAME = "wwesmaat"      
-GROUP_ID = -1002691575929             
+GROUP_ID = 1002691575929             
 
 # --- Helper Functions (Shared) ---
 def load_data():
@@ -139,8 +141,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         user_id = call.from_user.id
         message_id = call.message.message_id
         data = call.data
-          # أضف هذا السطر هنا لتتبع البيانات الخام
-        print(f"Received callback data: {data}")
         
         data_file = load_data()
         users_data = load_users()
@@ -348,7 +348,36 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             service, app_id = parts[2], parts[3]
             page = int(parts[5]) if len(parts) > 5 else 1
             
-            local_countries = load_data().get('countries', {}).get(service, {}).get(app_id, {})
+            local_countries = {}
+            if service == 'smsman':
+                try:
+                    # سحب البيانات مباشرة من API SMS.man
+                    api_countries_response = smsman_api['get_countries_smsman']()
+                    api_prices_response = requests.get(f'https://api.sms-man.com/v1/getPrices?token={os.environ.get("SMSMAN_KEY")}').json()
+                    
+                    if not api_countries_response.get('error') and not api_prices_response.get('error'):
+                        # طباعة البيانات الخام في السجل للتحقق
+                        print(f"SMS.man Countries API Response: {api_countries_response}")
+                        print(f"SMS.man Prices API Response: {api_prices_response}")
+                        
+                        # دمج البيانات
+                        for country_name, country_info in api_countries_response.items():
+                            country_id = str(country_info['id'])
+                            price_info = api_prices_response.get('price', {}).get(app_id, {}).get(country_id)
+                            if price_info:
+                                price = price_info.get('price')
+                                count = price_info.get('count')
+                                if price is not None and count is not None and count > 0:
+                                    local_countries[country_id] = {'name': country_name, 'price': price}
+                    else:
+                        bot.send_message(chat_id, '❌ حدث خطأ أثناء سحب بيانات الدول والأسعار. يرجى المحاولة لاحقًا.')
+                        return
+                except Exception as e:
+                    print(f"Error fetching SMS.man countries/prices: {e}")
+                    bot.send_message(chat_id, '❌ حدث خطأ أثناء سحب البيانات. يرجى المحاولة لاحقًا.')
+                    return
+            else:
+                local_countries = load_data().get('countries', {}).get(service, {}).get(app_id, {})
             
             if not local_countries:
                 bot.send_message(chat_id, '❌ لا توجد دول متاحة لهذا التطبيق حاليًا.')
@@ -485,3 +514,4 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 bot.send_message(chat_id, f"✅ تم إلغاء الطلب بنجاح. تم استرجاع `{price}` روبل إلى رصيدك.", parse_mode='Markdown')
             except Exception as e:
                 bot.send_message(chat_id, f"❌ حدث خطأ أثناء إلغاء الطلب: {e}")
+
