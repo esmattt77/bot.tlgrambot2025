@@ -2,13 +2,13 @@ from telebot import types
 import json
 import time
 from telebot.apihelper import ApiTelegramException
-import requests
 import os
+import requests
 
 # --- المتغيرات الخاصة بالقناة والمجموعة (قم بتحديثها) ---
 CHANNEL_USERNAME = "EESSMT"  
 GROUP_USERNAME = "wwesmaat"      
-GROUP_ID = 1002691575929             
+GROUP_ID = -1002691575929             
 
 # --- Helper Functions (Shared) ---
 def load_data():
@@ -115,7 +115,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
                 markup.row(types.InlineKeyboardButton('💰︙ربح روبل مجاني 🤑', callback_data='assignment'))
                 markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
-                # هذا السطر تم تعديله لإصلاح خطأ بناء الجملة
                 markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
                 markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
                 bot.send_message(chat_id, f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
@@ -248,7 +247,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             bot.send_message(chat_id, "💳 *متجر الكروت متوفر الآن! تواصل مع الدعم لشراء كرت.*", parse_mode='Markdown')
             return
         elif data == 'ready':
-            bot.send_message(chat_id, "🔰 *لا توجد أرقام جاهزة متاحة حالياً.*", parse_mode='Markdown')
+            bot.send_message(chat_id, "🔰 *لا توجد أرقام جاهزة متاحة حاليًا.*", parse_mode='Markdown')
             return
         elif data == 'gents':
             bot.send_message(chat_id, "👨‍💻 *نظام الوكلاء قيد المراجعة. إذا كنت مهتماً، يمكنك التواصل مع المشرف.*", parse_mode='Markdown')
@@ -339,7 +338,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 markup.row(types.InlineKeyboardButton('⁞ لاين 📲', callback_data=f'show_countries_{service}_li'))
                 markup.row(types.InlineKeyboardButton('⁞ أمازون 🛒', callback_data=f'show_countries_{service}_am'))
             
-            markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='Buynum'))
             server_name = 'سيرفر 1' if service == 'viotp' else ('سيرفر 2' if service == 'smsman' else 'سيرفر 3')
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
 
@@ -349,35 +348,18 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             page = int(parts[5]) if len(parts) > 5 else 1
             
             local_countries = {}
-            if service == 'smsman':
-                try:
-                    # سحب البيانات مباشرة من API SMS.man
-                    api_countries_response = smsman_api['get_countries_smsman']()
-                    api_prices_response = requests.get(f'https://api.sms-man.com/v1/getPrices?token={os.environ.get("SMSMAN_KEY")}').json()
-                    
-                    if not api_countries_response.get('error') and not api_prices_response.get('error'):
-                        # طباعة البيانات الخام في السجل للتحقق
-                        print(f"SMS.man Countries API Response: {api_countries_response}")
-                        print(f"SMS.man Prices API Response: {api_prices_response}")
-                        
-                        # دمج البيانات
-                        for country_name, country_info in api_countries_response.items():
-                            country_id = str(country_info['id'])
-                            price_info = api_prices_response.get('price', {}).get(app_id, {}).get(country_id)
-                            if price_info:
-                                price = price_info.get('price')
-                                count = price_info.get('count')
-                                if price is not None and count is not None and count > 0:
-                                    local_countries[country_id] = {'name': country_name, 'price': price}
-                    else:
-                        bot.send_message(chat_id, '❌ حدث خطأ أثناء سحب بيانات الدول والأسعار. يرجى المحاولة لاحقًا.')
-                        return
-                except Exception as e:
-                    print(f"Error fetching SMS.man countries/prices: {e}")
-                    bot.send_message(chat_id, '❌ حدث خطأ أثناء سحب البيانات. يرجى المحاولة لاحقًا.')
-                    return
-            else:
-                local_countries = load_data().get('countries', {}).get(service, {}).get(app_id, {})
+            if service == 'viotp':
+                countries_data = viotp_client.get_countries(app_id)
+                if countries_data['success']:
+                    local_countries = countries_data['countries']
+            elif service == 'smsman':
+                countries_data = smsman_api['get_smsman_countries'](app_id)
+                if countries_data['success']:
+                    local_countries = countries_data['countries']
+            elif service == 'tigersms':
+                countries_data = tiger_sms_client.get_countries(app_id)
+                if countries_data['success']:
+                    local_countries = countries_data['countries']
             
             if not local_countries:
                 bot.send_message(chat_id, '❌ لا توجد دول متاحة لهذا التطبيق حاليًا.')
@@ -422,17 +404,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 return
 
             if service == 'viotp':
-                result = viotp_client.buy_number(app_id)
-                # إضافة طباعة لتتبع الخطأ
-                print(f"ViOTP API Response: {result}")
+                result = viotp_client.buy_number(app_id, country_code)
             elif service == 'smsman':
                 result = smsman_api['request_smsman_number'](app_id, country_code)
-                # إضافة طباعة لتتبع الخطأ
-                print(f"SMS.man API Response: {result}")
             elif service == 'tigersms':
                 result = tiger_sms_client.get_number(app_id, country_code)
-                # إضافة طباعة لتتبع الخطأ
-                print(f"TigerSMS API Response: {result}")
 
             if result and result.get('success'):
                 request_id = result.get('id')
@@ -457,7 +433,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 markup.row(types.InlineKeyboardButton('❌ إلغاء الطلب', callback_data=f'cancel_{service}_{request_id}'))
                 bot.send_message(chat_id, f"✅ تم طلب الرقم بنجاح: *{phone_number}*\n\nاضغط على الزر للحصول على الكود أو إلغاء الطلب.", parse_mode='Markdown', reply_markup=markup)
             else:
-                bot.send_message(chat_id, "❌ فشل طلب الرقم. قد يكون غير متوفر أو أن رصيدك في الخدمة غير كافٍ.")
+                error_message = result.get('error', 'رسالة الخطأ غير متوفرة.')
+                bot.send_message(chat_id, f"❌ فشل طلب الرقم. قد يكون غير متوفر أو أن رصيدك في الخدمة غير كافٍ.\n\nرسالة الخطأ: `{error_message}`", parse_mode='Markdown')
                 
         elif data.startswith('get_otp_'):
             parts = data.split('_')
@@ -482,8 +459,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 bot.send_message(chat_id, f"✅ تم استلام الكود بنجاح!\n\n*الكود:* `{code}`", parse_mode='Markdown')
                 del data_file['active_requests'][request_id]
                 save_data(data_file)
-            else:
+            elif result and result.get('status') == 'pending':
                 bot.send_message(chat_id, '⏳ لم يتم استلام الكود بعد. يرجى المحاولة مرة أخرى لاحقاً.')
+            else:
+                error_message = result.get('error', 'رسالة الخطأ غير متوفرة.')
+                bot.send_message(chat_id, f"❌ حدث خطأ أثناء جلب الكود: `{error_message}`")
 
         elif data.startswith('cancel_'):
             parts = data.split('_')
@@ -498,20 +478,24 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             
             try:
                 if service == 'viotp':
-                    viotp_client.cancel_number(request_id)
+                    result = viotp_client.cancel_number(request_id)
                 elif service == 'smsman':
-                    smsman_api['cancel_smsman_number'](request_id)
+                    result = smsman_api['cancel_smsman_number'](request_id)
                 elif service == 'tigersms':
-                    tiger_sms_client.cancel_number(request_id)
+                    result = tiger_sms_client.cancel_number(request_id)
+                
+                if result and result.get('success'):
+                    price = request_info['price']
+                    users_data[str(user_id)]['balance'] += price
+                    save_users(users_data)
+                    
+                    del data_file['active_requests'][request_id]
+                    save_data(data_file)
+                    
+                    bot.send_message(chat_id, f"✅ تم إلغاء الطلب بنجاح. تم استرجاع `{price}` روبل إلى رصيدك.", parse_mode='Markdown')
+                else:
+                    error_message = result.get('error', 'رسالة الخطأ غير متوفرة.')
+                    bot.send_message(chat_id, f"❌ فشل إلغاء الطلب: `{error_message}`", parse_mode='Markdown')
 
-                price = request_info['price']
-                users_data[str(user_id)]['balance'] += price
-                save_users(users_data)
-                
-                del data_file['active_requests'][request_id]
-                save_data(data_file)
-                
-                bot.send_message(chat_id, f"✅ تم إلغاء الطلب بنجاح. تم استرجاع `{price}` روبل إلى رصيدك.", parse_mode='Markdown')
             except Exception as e:
                 bot.send_message(chat_id, f"❌ حدث خطأ أثناء إلغاء الطلب: {e}")
-
