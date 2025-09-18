@@ -5,7 +5,7 @@ from telebot import types
 
 # Import API clients
 from viotp_api import VIOTPAPI
-from smsman_api import get_smsman_balance, get_smsman_countries, request_smsman_number, get_smsman_code, cancel_smsman_request
+from smsman_api import get_smsman_balance, get_smsman_countries, request_smsman_number, get_smsman_code, cancel_smsman_number
 from tiger_sms_api import TigerSMSAPI
 
 # Import handlers
