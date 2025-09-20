@@ -1,61 +1,88 @@
- # viotp_api.py
-
 import requests
 import os
-from typing import Dict, Any
+import json
 
 class VIOTPAPI:
-    def __init__(self, api_key: str):
+    def __init__(self, api_key):
         self.api_key = api_key
-        # Base URL for the ViOTP API.
-        self.base_url = "https://api.viotp.com"
+        self.BASE_URL = "https://api.viotp.com"
 
-    def get_balance(self) -> Dict[str, Any]:
-        """Fetches the user's account balance from ViOTP."""
+    def _api_call(self, endpoint, params=None):
+        if params is None:
+            params = {}
+        params['token'] = self.api_key
         try:
-            url = f"{self.base_url}/users/balance?token={self.api_key}"
-            response = requests.get(url, timeout=10)
+            response = requests.get(f"{self.BASE_URL}{endpoint}", params=params)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            return {"success": False, "message": f"Connection error: {e}"}
+            return {"success": False, "error": f"Request failed: {e}"}
 
-    def get_services(self) -> Dict[str, Any]:
-        """Fetches the list of available services and their prices."""
-        try:
-            url = f"{self.base_url}/service/getv2?token={self.api_key}"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            return {"success": False, "message": f"Connection error: {e}"}
+    def get_balance(self):
+        response = self._api_call("/users/balance")
+        if not response.get('success'):
+            return {'success': False, 'error': response.get('message', 'Failed to get balance.')}
+        
+        balance = response.get('data', {}).get('balance', 0)
+        return {'success': True, 'balance': balance}
 
-    def buy_number(self, service_id: int) -> Dict[str, Any]:
-        """Buys a new number for a specific service."""
-        try:
-            url = f"{self.base_url}/request/getv2?token={self.api_key}&serviceId={service_id}"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            return {"success": False, "message": f"Connection error: {e}"}
+    def get_countries(self):
+        countries_data = {}
+        # The API doesn't have a "get all countries" endpoint. We'll list services for known countries.
+        supported_countries = [
+            {'code': 'vn', 'name': 'Vietnam 🇻🇳'},
+            {'code': 'la', 'name': 'Laos 🇱🇦'}
+        ]
 
-    def get_otp(self, request_id: str) -> Dict[str, Any]:
-        """Fetches the OTP for a purchased number."""
-        try:
-            url = f"{self.base_url}/session/getv2?token={self.api_key}&requestId={request_id}"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            return {"success": False, "message": f"Connection error: {e}"}
+        for country_info in supported_countries:
+            response = self._api_call("/service/getv2", params={'country': country_info['code']})
+            if response.get('success'):
+                services = response.get('data', [])
+                for service in services:
+                    service_id = str(service.get('id'))
+                    if service_id not in countries_data:
+                        countries_data[service_id] = {}
+                    
+                    countries_data[service_id][country_info['code']] = {
+                        'name': f"{service.get('name')} - {country_info['name']}",
+                        'price': float(service.get('price', 0)),
+                        'count': -1 # The API does not provide number counts.
+                    }
 
-    def cancel_request(self, request_id: str) -> Dict[str, Any]:
-        """Cancels a number request. Note: this API might not be officially supported."""
-        try:
-            url = f"{self.base_url}/session/cancelv2?token={self.api_key}&requestId={request_id}"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            return {"success": False, "message": f"Connection error: {e}"}
+        return {'success': True, 'countries': countries_data}
+
+    def buy_number(self, service_id, country_code):
+        params = {'serviceId': service_id, 'country': country_code}
+        response = self._api_call("/request/getv2", params=params)
+        
+        if not response.get('success'):
+            return {'success': False, 'error': response.get('message', 'Failed to buy number.')}
+
+        data = response.get('data', {})
+        return {
+            'success': True,
+            'id': str(data.get('request_id')),
+            'number': str(data.get('phone_number'))
+        }
+
+    def get_otp(self, request_id):
+        response = self._api_call("/session/getv2", params={'requestId': request_id})
+        
+        if not response.get('success'):
+            return {'success': False, 'error': response.get('message', 'Failed to get OTP.')}
+
+        data = response.get('data', {})
+        status = data.get('Status')
+        
+        if status == 1: # 1: Hoàn thành (Completed)
+            code = data.get('Code')
+            return {'success': True, 'code': code}
+        elif status == 0: # 0: Đợi tin nhắn (Waiting for message)
+            return {'success': False, 'status': 'pending'}
+        else: # 2: Hết hạn (Expired) or other
+            return {'success': False, 'error': 'Request expired or invalid.'}
+
+    def cancel_number(self, request_id):
+        # The VIOTP API documentation does not provide a cancellation endpoint.
+        # This function is a placeholder to prevent errors in the main bot logic.
+        return {'success': False, 'error': 'Cancellation is not supported by the VIOTP API.'}
