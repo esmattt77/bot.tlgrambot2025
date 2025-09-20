@@ -328,13 +328,18 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
 
         elif data.startswith('show_countries_'):
-            try:
-                parts = data.split('_')
-                service, app_id = parts[2], parts[3]
-                
-               if service == 'viotp':
-    api_response = viotp_client.get_countries()
-    api_data = api_response.get('countries', {}).get(app_id, {})
+    parts = data.split('_')
+    service, app_id = parts[2], parts[3]
+    
+    try:
+        if service == 'viotp':
+            api_response = viotp_client.get_countries()
+            
+            # أضف هذا السطر لطباعة الرد بالكامل
+            print(f"ViOTP API Response for app_id={app_id}: {api_response}")
+            
+            api_data = api_response.get('countries', {}).get(app_id, {})
+        # ... (بقية الكود)
                 elif service == 'smsman':
                     api_data = smsman_api.get_countries(app_id)
                 elif service == 'tigersms':
