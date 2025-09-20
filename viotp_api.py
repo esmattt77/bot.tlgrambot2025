@@ -19,25 +19,13 @@ class VIOTPAPI:
             return response.json()
         except requests.exceptions.RequestException as e:
             return {"success": False, "message": f"خطأ في الاتصال: {e}"}
-
-    def get_services(self) -> Dict[str, Any]:
-        """يجلب قائمة الخدمات (التطبيقات) المتاحة وأسعارها."""
-        try:
-            # نقطة الاتصال هذه تجلب قائمة الخدمات، وليست الدول.
-            url = f"{self.base_url}/service/getv2?token={self.api_key}"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            return {"success": False, "message": f"خطأ في الاتصال: {e}"}
-
-    def get_countries(self) -> Dict[str, Any]:
+            
+    def get_services_by_country(self, country_code: str = 'vn') -> Dict[str, Any]:
         """
-        يجلب الدول المتاحة لكل خدمة (تطبيق) وأسعارها.
+        يجلب قائمة الخدمات المتاحة لدولة معينة (مثل فيتنام 'vn').
         """
         try:
-            # هذه هي نقطة الاتصال الصحيحة للحصول على الدول والأسعار.
-            url = f"{self.base_url}/datakey/get?token={self.api_key}"
+            url = f"{self.base_url}/service/getv2?token={self.api_key}&country={country_code}"
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             return response.json()
