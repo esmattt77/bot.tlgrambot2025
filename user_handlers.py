@@ -332,8 +332,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 parts = data.split('_')
                 service, app_id = parts[2], parts[3]
                 
-                if service == 'viotp':
-                    api_data = viotp_client.get_countries().get('countries', {}).get(app_id, {})
+               if service == 'viotp':
+    api_response = viotp_client.get_countries()
+    api_data = api_response.get('countries', {}).get(app_id, {})
                 elif service == 'smsman':
                     api_data = smsman_api.get_countries(app_id)
                 elif service == 'tigersms':
