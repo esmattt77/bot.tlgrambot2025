@@ -35,7 +35,7 @@ def load_users():
     try:
         with open('users.json', 'r', encoding='utf-8') as f:
             return json.load(f)
-    except (FileNotFound, json.JSONDecodeError):
+    except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 def save_users(users):
@@ -278,7 +278,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         elif data == 'back':
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=get_main_keyboard())
         
-        # إضافة منطق جديد لاختيار الدولة أولاً
+        # --- ViOTP Logic ---
         elif data.startswith('show_countries_'):
             service = data.split('_')[2]
             markup = types.InlineKeyboardMarkup()
@@ -289,9 +289,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 markup.row(types.InlineKeyboardButton('رجوع', callback_data='Buynum'))
                 bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر الدولة التي تريدها:", reply_markup=markup)
             
-            # ... (بقية السيرفرات)
-            
-        # إضافة منطق جديد لعرض الخدمات بعد اختيار الدولة
         elif data.startswith('show_services_'):
             parts = data.split('_')
             service, country_code = parts[2], parts[3]
@@ -318,32 +315,72 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             except Exception as e:
                 bot.send_message(chat_id, f"❌ حدث خطأ أثناء الاتصال بالـ API: {e}")
 
-        elif data.startswith('buy_'):
-            parts = data.split('_')
-            service, app_id = parts[1], parts[2]
+        # --- SMS-Man Logic ---
+        elif data.startswith('service_smsman'):
+            try:
+                api_response = smsman_api.get_countries()
+                if not api_response.get('success'):
+                    bot.send_message(chat_id, f"❌ حدث خطأ من الـ API: {api_response.get('message', 'لا توجد بيانات')}")
+                    return
+
+                countries_data = api_response.get('data', [])
+                if not countries_data:
+                    bot.send_message(chat_id, '❌ لا توجد دول متاحة من واجهة API لهذه الخدمة حاليًا.')
+                    return
+
+                markup = types.InlineKeyboardMarkup()
+                for country_info in countries_data:
+                    markup.add(types.InlineKeyboardButton(f"🌐 {country_info['name']} ({country_info['count']})", callback_data=f'show_apps_{country_info["id"]}'))
+                markup.add(types.InlineKeyboardButton('رجوع', callback_data='Buynum'))
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر الدولة التي تريدها:", reply_markup=markup)
+
+            except Exception as e:
+                bot.send_message(chat_id, f"❌ حدث خطأ أثناء الاتصال بالـ API: {e}")
+
+        elif data.startswith('show_apps_'):
+            country_id = data.split('_')[-1]
+            try:
+                api_response = smsman_api.get_applications(country_id)
+                if not api_response.get('success'):
+                    bot.send_message(chat_id, f"❌ حدث خطأ من الـ API: {api_response.get('message', 'لا توجد بيانات')}")
+                    return
+
+                apps_data = api_response.get('data', [])
+                if not apps_data:
+                    bot.send_message(chat_id, '❌ لا توجد تطبيقات متاحة لهذه الدولة حاليًا.')
+                    return
+
+                markup = types.InlineKeyboardMarkup()
+                for app_info in apps_data:
+                    markup.add(types.InlineKeyboardButton(f"📱 {app_info['name']} ({app_info['price']} روبل)", callback_data=f'buy_smsman_{app_info["id"]}_{country_id}'))
+                markup.add(types.InlineKeyboardButton('رجوع', callback_data=f'service_smsman'))
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر التطبيق الذي تريده:", reply_markup=markup)
             
+            except Exception as e:
+                bot.send_message(chat_id, f"❌ حدث خطأ أثناء الاتصال بالـ API: {e}")
+
+        # --- Buy Number Logic (Unified) ---
+        elif data.startswith('buy_'):
+            # Adjusted to handle SMS-Man's specific callback data
+            parts = data.split('_')
+            service = parts[1]
+            
+            if service == 'viotp':
+                app_id = parts[2]
+                price = 1.0 # Static price for now, need to fetch from API
+                country_code = None # Not used in ViOTP's buy_number
+            elif service == 'smsman':
+                app_id = parts[2]
+                country_code = parts[3]
+                price = 0 # Price will be determined by the API response
+            else:
+                # Other services...
+                pass
+
             data_file = load_data()
             users_data = load_users()
+            user_balance = users_data.get(str(user_id), {}).get('balance', 0)
             
-            try:
-                # تحديث الرصيد والسعر من API قبل الشراء
-                if service == 'viotp':
-                    # لا يمكن الحصول على السعر مباشرة من API في الوثيقة الجديدة
-                    # يمكن وضع سعر ثابت أو إضافة منطق للتحقق من الأسعار
-                    # هنا نستخدم قيمة افتراضية
-                    price = 1.0 # قم بتغيير هذه القيمة إذا كان هناك سعر محدد
-                else:
-                    price = 0
-
-                user_balance = users_data.get(str(user_id), {}).get('balance', 0)
-            
-                if user_balance < price:
-                    bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
-                    return
-            except Exception as e:
-                bot.send_message(chat_id, f"❌ حدث خطأ أثناء التحقق من الرصيد: {e}")
-                return
-
             try:
                 if service == 'viotp':
                     result = viotp_client.buy_number(app_id)
@@ -353,8 +390,24 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     result = tiger_sms_client.get_number(app_id, country_code)
 
                 if result and result.get('success'):
-                    request_id = result.get('data', {}).get('request_id')
-                    phone_number = result.get('data', {}).get('phone_number')
+                    # --- FIX ---
+                    if service == 'viotp':
+                        request_id = result.get('data', {}).get('request_id')
+                        phone_number = result.get('data', {}).get('phone_number')
+                        # Price is already set
+                    elif service == 'smsman':
+                        # The SMS-Man API response keys are different
+                        request_id = result.get('request_id')
+                        phone_number = result.get('number')
+                        price = result.get('price')
+                    
+                    if not request_id or not phone_number:
+                        bot.send_message(chat_id, "❌ فشل الحصول على معلومات الرقم من الخدمة. يرجى المحاولة مرة أخرى.")
+                        return
+
+                    if user_balance < price:
+                        bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
+                        return
                     
                     users_data[str(user_id)]['balance'] -= price
                     save_users(users_data)
@@ -379,6 +432,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             except Exception as e:
                 bot.send_message(chat_id, f"❌ حدث خطأ أثناء الشراء: {e}")
                 
+        # --- Get OTP Logic (Unified) ---
         elif data.startswith('get_otp_'):
             parts = data.split('_')
             service, request_id = parts[2], parts[3]
@@ -408,6 +462,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             except Exception as e:
                 bot.send_message(chat_id, f"❌ حدث خطأ أثناء جلب الكود: {e}")
 
+        # --- Cancel Logic (Unified) ---
         elif data.startswith('cancel_'):
             parts = data.split('_')
             service, request_id = parts[1], parts[2]
