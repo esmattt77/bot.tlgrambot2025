@@ -361,21 +361,23 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
 
         # --- Buy Number Logic (Unified) ---
         elif data.startswith('buy_'):
-            # Adjusted to handle SMS-Man's specific callback data
             parts = data.split('_')
             service = parts[1]
             
+            # This handles both ViOTP and SMS-Man callback formats
             if service == 'viotp':
                 app_id = parts[2]
-                price = 1.0 # Static price for now, need to fetch from API
-                country_code = None # Not used in ViOTP's buy_number
+                country_code = None
+                price = None # Will be set by API response
             elif service == 'smsman':
                 app_id = parts[2]
+                country_id = parts[3]
+                country_code = country_id # Using country_id as country_code for simplicity
+                price = None # Will be set by API response
+            elif service == 'tigersms':
+                app_id = parts[2]
                 country_code = parts[3]
-                price = 0 # Price will be determined by the API response
-            else:
-                # Other services...
-                pass
+                price = None # Will be set by API response
 
             data_file = load_data()
             users_data = load_users()
@@ -390,26 +392,34 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     result = tiger_sms_client.get_number(app_id, country_code)
 
                 if result and result.get('success'):
-                    # --- FIX ---
+                    request_id = None
+                    phone_number = None
+                    final_price = None
+
+                    # --- Extract data based on service (FIXED) ---
                     if service == 'viotp':
                         request_id = result.get('data', {}).get('request_id')
                         phone_number = result.get('data', {}).get('phone_number')
-                        # Price is already set
+                        final_price = result.get('data', {}).get('balance') # ViOTP returns current balance, price must be handled differently
                     elif service == 'smsman':
                         # The SMS-Man API response keys are different
                         request_id = result.get('request_id')
                         phone_number = result.get('number')
-                        price = result.get('price')
-                    
-                    if not request_id or not phone_number:
+                        final_price = result.get('price')
+                    elif service == 'tigersms':
+                        request_id = result.get('id')
+                        phone_number = result.get('number')
+                        final_price = result.get('price')
+
+                    if not request_id or not phone_number or final_price is None:
                         bot.send_message(chat_id, "❌ فشل الحصول على معلومات الرقم من الخدمة. يرجى المحاولة مرة أخرى.")
                         return
 
-                    if user_balance < price:
-                        bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
+                    if user_balance < final_price:
+                        bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {final_price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
                         return
                     
-                    users_data[str(user_id)]['balance'] -= price
+                    users_data[str(user_id)]['balance'] -= final_price
                     save_users(users_data)
                     
                     active_requests = data_file.get('active_requests', {})
@@ -418,7 +428,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         'phone_number': phone_number,
                         'status': 'pending',
                         'service': service,
-                        'price': price
+                        'price': final_price
                     }
                     data_file['active_requests'] = active_requests
                     save_data(data_file)
