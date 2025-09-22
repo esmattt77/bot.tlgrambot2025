@@ -2,7 +2,7 @@
 
 from telebot import types
 import json
-import timeع
+import time
 from telebot.apihelper import ApiTelegramException
 
 # --- المتغيرات الخاصة بالقناة والمجموعة (قم بتحديثها) ---
