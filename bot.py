@@ -5,7 +5,7 @@ from telebot import types
 
 # Import API clients
 from viotp_api import VIOTPAPI
-from smsman_api import SmsManApi  # تم التعديل
+from smsman_api import SmsManApi  # استيراد الفئة الصحيحة
 from tiger_sms_api import TigerSMSAPI
 
 # Import handlers
@@ -32,7 +32,7 @@ TIGER_SMS_API_KEY = os.environ.get('TIGER_SMS_API_KEY')
 # Create API client objects
 viotp_client = VIOTPAPI(VIOTP_API_KEY)
 tiger_sms_client = TigerSMSAPI(TIGER_SMS_API_KEY)
-smsman_api = SmsManApi(SMSMAN_API_KEY)  # تم التعديل
+smsman_api = SmsManApi(SMSMAN_API_KEY) # إنشاء كائن من الفئة
 
 # Create a Flask app instance
 app = Flask(__name__)
