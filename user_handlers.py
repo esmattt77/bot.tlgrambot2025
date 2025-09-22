@@ -1,3 +1,5 @@
+# user_handlers.py
+
 from telebot import types
 import json
 import time
@@ -305,8 +307,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         
                     markup = types.InlineKeyboardMarkup()
                     for service_info in services_data:
-                        # Modified callback to include price
-                        markup.row(types.InlineKeyboardButton(f"⁞ {service_info['name']} ({service_info['price']} روبل)", callback_data=f'buy_{service}_{service_info["id"]}_{service_info["price"]}_{country_code}'))
+                        markup.row(types.InlineKeyboardButton(f"⁞ {service_info['name']} ({service_info['price']} روبل)", callback_data=f'buy_{service}_{service_info["id"]}'))
                         
                     markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_countries_viotp'))
                     bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر التطبيق من {country_code.upper()}:", reply_markup=markup)
@@ -351,8 +352,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
 
                 markup = types.InlineKeyboardMarkup()
                 for app_info in apps_data:
-                    # Modified callback to include price
-                    markup.add(types.InlineKeyboardButton(f"📱 {app_info['name']} ({app_info['price']} روبل)", callback_data=f'buy_smsman_{app_info["id"]}_{country_id}_{app_info["price"]}'))
+                    markup.add(types.InlineKeyboardButton(f"📱 {app_info['name']} ({app_info['price']} روبل)", callback_data=f'buy_smsman_{app_info["id"]}_{country_id}'))
                 markup.add(types.InlineKeyboardButton('رجوع', callback_data=f'service_smsman'))
                 bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر التطبيق الذي تريده:", reply_markup=markup)
             
@@ -361,35 +361,27 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
 
         # --- Buy Number Logic (Unified) ---
         elif data.startswith('buy_'):
+            # Adjusted to handle SMS-Man's specific callback data
             parts = data.split('_')
             service = parts[1]
             
-            # This handles both ViOTP and SMS-Man callback formats
             if service == 'viotp':
                 app_id = parts[2]
-                final_price = float(parts[3])
-                country_code = parts[4]
+                price = 1.0 # Static price for now, need to fetch from API
+                country_code = None # Not used in ViOTP's buy_number
             elif service == 'smsman':
                 app_id = parts[2]
-                country_id = parts[3]
-                final_price = float(parts[4])
-                country_code = country_id
+                country_code = parts[3]
+                price = 0 # Price will be determined by the API response
             else:
                 # Other services...
-                return
+                pass
 
             data_file = load_data()
             users_data = load_users()
             user_balance = users_data.get(str(user_id), {}).get('balance', 0)
             
-            # --- The Key Change: Check Balance BEFORE API Call ---
-            if user_balance < final_price:
-                bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {final_price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
-                return
-            
-            # Now, if balance is sufficient, we proceed to call the API
             try:
-                result = None
                 if service == 'viotp':
                     result = viotp_client.buy_number(app_id)
                 elif service == 'smsman':
@@ -398,24 +390,26 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     result = tiger_sms_client.get_number(app_id, country_code)
 
                 if result and result.get('success'):
-                    request_id = None
-                    phone_number = None
-
+                    # --- FIX ---
                     if service == 'viotp':
                         request_id = result.get('data', {}).get('request_id')
                         phone_number = result.get('data', {}).get('phone_number')
+                        # Price is already set
                     elif service == 'smsman':
+                        # The SMS-Man API response keys are different
                         request_id = result.get('request_id')
                         phone_number = result.get('number')
-                    elif service == 'tigersms':
-                        request_id = result.get('id')
-                        phone_number = result.get('number')
-
+                        price = result.get('price')
+                    
                     if not request_id or not phone_number:
                         bot.send_message(chat_id, "❌ فشل الحصول على معلومات الرقم من الخدمة. يرجى المحاولة مرة أخرى.")
                         return
 
-                    users_data[str(user_id)]['balance'] -= final_price
+                    if user_balance < price:
+                        bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
+                        return
+                    
+                    users_data[str(user_id)]['balance'] -= price
                     save_users(users_data)
                     
                     active_requests = data_file.get('active_requests', {})
@@ -424,7 +418,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         'phone_number': phone_number,
                         'status': 'pending',
                         'service': service,
-                        'price': final_price
+                        'price': price
                     }
                     data_file['active_requests'] = active_requests
                     save_data(data_file)
