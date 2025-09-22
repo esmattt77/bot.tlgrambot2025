@@ -44,10 +44,9 @@ def register_user(user_id, first_name, username):
             'username': username,
             'balance': 0,
             'join_date': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime()),
-            'purchases': []  # إضافة قائمة لتتبع المشتريات
+            'purchases': []
         }
     else:
-        # تحديث الاسم واسم المستخدم في كل مرة للتأكد من أنها محدثة
         users_data[user_id_str]['first_name'] = first_name
         users_data[user_id_str]['username'] = username
     save_users(users_data)
@@ -62,7 +61,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         first_name = message.from_user.first_name
         username = message.from_user.username
         
-        # استخدام دالة التسجيل المحدثة
         register_user(user_id, first_name, username)
 
         if message.text in ['/start', 'start/', 'بدء/']:
@@ -163,7 +161,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             markup.row(types.InlineKeyboardButton('سيرفر 1', callback_data='service_viotp'))
             markup.row(types.InlineKeyboardButton('سيرفر 2', callback_data='service_smsman'))
             markup.row(types.InlineKeyboardButton('سيرفر 3', callback_data='service_tigersms'))
-            markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum')) # تغيير هذه إلى 'back'
+            markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="📞 *اختر الخدمة التي تريد الشراء منها:*", parse_mode='Markdown', reply_markup=markup)
         
         elif data == 'Record':
@@ -174,7 +172,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             message_text = f"💰 رصيدك الحالي هو: *{balance}* روبل.\n\n"
             if purchases:
                 message_text += "📝 **سجل مشترياتك الأخيرة:**\n"
-                for i, p in enumerate(purchases[-5:]): # عرض آخر 5 مشتريات فقط
+                for i, p in enumerate(purchases[-5:]):
                     phone_number = p.get('phone_number', 'غير متوفر')
                     price = p.get('price', 0)
                     timestamp = p.get('timestamp', 'غير متوفر')
@@ -303,14 +301,15 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             elif service == 'tigersms':
                 result = tiger_sms_client.get_number(app_id, country_code)
 
+            # 🟢 سطر الطباعة المضاف هنا
+            print(f"Response from {service}:", result)
+
             if result and result.get('success'):
                 request_id = result.get('id')
                 phone_number = result.get('number', result.get('Phone', 'غير متوفر'))
                 
-                # خصم الرصيد من المستخدم
                 users_data[str(user_id)]['balance'] -= price
                 
-                # تسجيل عملية الشراء في ملف المستخدم
                 users_data[str(user_id)]['purchases'].append({
                     'request_id': request_id,
                     'phone_number': phone_number,
@@ -322,7 +321,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 
                 save_users(users_data)
                 
-                # إضافة الطلب إلى قائمة الطلبات النشطة
                 active_requests = data_file.get('active_requests', {})
                 active_requests[request_id] = {
                     'user_id': user_id,
@@ -364,7 +362,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     data_file['active_requests'] = active_requests
                     save_data(data_file)
 
-                    # تحديث حالة الطلب في سجل المستخدم
                     for purchase in users_data.get(str(user_id), {}).get('purchases', []):
                         if purchase.get('request_id') == request_id:
                             purchase['status'] = 'completed'
@@ -401,10 +398,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     
                     user_id_str = str(user_id_from_request)
                     if user_id_str in users_data:
-                        # استرجاع الرصيد
                         users_data[user_id_str]['balance'] += price_to_restore
                         
-                        # إزالة الطلب من سجل المشتريات
                         users_data[user_id_str]['purchases'] = [
                             p for p in users_data[user_id_str]['purchases'] 
                             if p.get('request_id') != request_id
