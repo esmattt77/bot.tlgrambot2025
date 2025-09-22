@@ -1,48 +1,215 @@
-import telebot
 from telebot import types
 import json
 import time
+from telebot.apihelper import ApiTelegramException
 
-# Helper functions to load/save data (assuming they are in bot.py or utils.py)
-# For this example, we will assume they are available through the main bot file.
+# --- المتغيرات الخاصة بالقناة والمجموعة (قم بتحديثها) ---
+CHANNEL_USERNAME = "EESSMT"  # قم بتغيير هذا بـ اسم مستخدم قناتك بدون @
+GROUP_USERNAME = "wwesmaat"      # قم بتغيير هذا بـ اسم مستخدم مجموعتك بدون @
+GROUP_ID = -1002691575929             # <<< قم بتغيير هذا بـ ID مجموعتك (يجب أن يبدأ بـ -100) >>>
 
-def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
+# --- Helper Functions (Shared) ---
+def load_data():
+    try:
+        with open('data.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            if 'sh_services' not in data:
+                data['sh_services'] = {}
+            if 'countries' not in data:
+                data['countries'] = {}
+            if 'states' not in data:
+                data['states'] = {}
+            if 'active_requests' not in data:
+                data['active_requests'] = {}
+            return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {'users': {}, 'states': {}, 'countries': {}, 'active_requests': {}, 'sh_services': {}}
+
+def save_data(data):
+    with open('data.json', 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+def load_users():
+    try:
+        with open('users.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def save_users(users):
+    with open('users.json', 'w', encoding='utf-8') as f:
+        json.dump(users, f, indent=4, ensure_ascii=False)
+
+def register_user(user_id, first_name, username):
+    users_data = load_users()
+    if str(user_id) not in users_data:
+        users_data[str(user_id)] = {
+            'id': user_id,
+            'first_name': first_name,
+            'username': username,
+            'balance': 0,
+            'join_date': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime()),
+            'has_received_bonus': False,
+            'has_referrer': False  # NEW FIELD
+        }
+        save_users(users_data)
+
+def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
     
-    @bot.message_handler(func=lambda message: True)
+    @bot.message_handler(func=lambda message: message.from_user.id != DEVELOPER_ID)
     def handle_user_messages(message):
         chat_id = message.chat.id
         user_id = message.from_user.id
         first_name = message.from_user.first_name
         username = message.from_user.username
         
-        # This part of your code needs to be adapted
+        users_data = load_users()
         register_user(user_id, first_name, username)
+        user_info = users_data.get(str(user_id))
+        
+        # --- NEW REFERRAL LOGIC IN START COMMAND ---
+        if message.text.startswith('/start'):
+            # Check for a referral code
+            start_parameter = message.text.split(' ')[1] if len(message.text.split(' ')) > 1 else None
+            
+            # Check if this is a new user AND if a referrer is provided
+            if start_parameter and str(user_id) not in users_data:
+                referrer_id = start_parameter
+                if referrer_id != str(user_id):
+                    referrer_data = users_data.get(referrer_id)
+                    if referrer_data:
+                        referrer_data['balance'] += 1
+                        users_data[str(user_id)]['has_referrer'] = True
+                        save_users(users_data)
+                        
+                        bot.send_message(chat_id, f"🎉 لقد انضممت عبر رابط إحالة! تم إضافة 1 روبل إلى رصيد {referrer_data.get('first_name', 'صديقك')}.")
+                        try:
+                            bot.send_message(referrer_id, f"✅ تهانينا! لقد انضم مستخدم جديد من خلال رابطك. تم إضافة 1 روبل إلى رصيدك.", parse_mode='Markdown')
+                        except Exception as e:
+                            print(f"Failed to notify referrer: {e}")
 
-        if message.text in ['/start', 'start/', 'بدء/']:
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
-            markup.row(types.InlineKeyboardButton('💰︙شحن رصيدك', callback_data='Payment'), types.InlineKeyboardButton('👤︙قسم الرشق', callback_data='sh'))
-            markup.row(types.InlineKeyboardButton('🅿️︙كشف الحساب', callback_data='Record'), types.InlineKeyboardButton('🛍︙قسم العروض', callback_data='Wo'))
-            markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
-            markup.row(types.InlineKeyboardButton('💰︙ربح روبل مجاني 🤑', callback_data='assignment'))
-            markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
-            markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
-            markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
-            bot.send_message(chat_id, f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
+            # --- Forced Subscription Logic ---
+            has_joined_channel = False
+            has_joined_group = False
+            
+            try:
+                channel_member = bot.get_chat_member(f"@{CHANNEL_USERNAME}", user_id)
+                if channel_member.status in ['member', 'creator', 'administrator']:
+                    has_joined_channel = True
+                
+                group_member = bot.get_chat_member(f"@{GROUP_USERNAME}", user_id)
+                if group_member.status in ['member', 'creator', 'administrator']:
+                    has_joined_group = True
+            except Exception as e:
+                print(f"Error checking membership: {e}")
+
+            if has_joined_channel and not user_info.get('has_received_bonus', False):
+                users_data[str(user_id)]['balance'] += 0.25
+                users_data[str(user_id)]['has_received_bonus'] = True
+                save_users(users_data)
+                bot.send_message(chat_id, "🎉 تهانينا! لقد حصلت على مكافأة 0.25 روبل لاشتراكك في القناة.")
+
+            if has_joined_channel and has_joined_group:
+                markup = types.InlineKeyboardMarkup()
+                markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
+                markup.row(types.InlineKeyboardButton('💰︙شحن رصيدك', callback_data='Payment'), types.InlineKeyboardButton('👤︙قسم الرشق', callback_data='sh'))
+                markup.row(types.InlineKeyboardButton('🅿️︙كشف الحساب', callback_data='Record'), types.InlineKeyboardButton('🛍︙قسم العروض', callback_data='Wo'))
+                markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
+                markup.row(types.InlineKeyboardButton('💰︙ربح روبل مجاني 🤑', callback_data='assignment'))
+                markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
+                markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.row(types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
+                markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
+                bot.send_message(chat_id, f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
+            else:
+                markup = types.InlineKeyboardMarkup()
+                if not has_joined_channel:
+                    markup.add(types.InlineKeyboardButton('📢 اشترك في القناة الرسمية', url=f'https://t.me/{CHANNEL_USERNAME}'))
+                if not has_joined_group:
+                    markup.add(types.InlineKeyboardButton('👥 انضم إلى المجموعة', url=f'https://t.me/{GROUP_USERNAME}'))
+                
+                markup.add(types.InlineKeyboardButton('✅ تحقق من اشتراكي', callback_data='check_subscription'))
+                
+                bot.send_message(chat_id, "🛑 للبدء في استخدام البوت، يرجى الاشتراك في القنوات والمجموعات التالية:", reply_markup=markup)
 
         elif message.text in ['/balance', 'رصيدي']:
             users_data = load_users()
             balance = users_data.get(str(user_id), {}).get('balance', 0)
             bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
-
-    @bot.callback_query_handler(func=lambda call: True)
+    
+    @bot.callback_query_handler(func=lambda call: call.from_user.id != DEVELOPER_ID)
     def handle_user_callbacks(call):
         chat_id = call.message.chat.id
         user_id = call.from_user.id
         message_id = call.message.message_id
         data = call.data
         
-        if data == 'Payment':
+        data_file = load_data()
+        users_data = load_users()
+
+        if data == 'assignment':
+            try:
+                # إنشاء رابط دعوة ببارامتر /start الخاص بالمستخدم
+                # NOTE: The bot must be an admin in the group.
+                invite_link = bot.create_chat_invite_link(GROUP_ID, creates_join_request=False, name=str(user_id)).invite_link
+                
+                # إرسال الرسالة مع الرابط
+                message_text = (
+                    f"🔗 **رابط إحالتك الشخصي:** `{invite_link}`\n\n"
+                    "**انسخ الرابط وشاركه مع أصدقائك!** 📥\n"
+                    "• كل شخص ينضم عبر رابطك، ستحصل على *1 روبل* 🔥\n\n"
+                    "_*ملاحظة: تأكد من أن المستخدم الجديد لا يمتلك حسابًا في البوت مسبقاً.*_"
+                )
+                bot.send_message(chat_id, message_text, parse_mode='Markdown')
+            except ApiTelegramException as e:
+                if "Bad Request: not enough rights" in str(e):
+                    error_message = "❌ البوت ليس مشرفًا في المجموعة أو ليس لديه صلاحية 'دعوة المستخدمين عبر الرابط'."
+                elif "Bad Request: chat not found" in str(e):
+                    error_message = "❌ معرف المجموعة (Group ID) غير صحيح."
+                else:
+                    error_message = f"❌ حدث خطأ غير معروف: {e}"
+                bot.send_message(chat_id, f"**عذراً، لا يمكن إنشاء رابط إحالة الآن.**\n\n{error_message}", parse_mode='Markdown')
+            except Exception as e:
+                bot.send_message(chat_id, f"❌ حدث خطأ أثناء إنشاء رابط الإحالة: {e}")
+            return
+
+        elif data == 'check_subscription':
+            has_joined_channel = False
+            has_joined_group = False
+            
+            try:
+                channel_member = bot.get_chat_member(f"@{CHANNEL_USERNAME}", user_id)
+                if channel_member.status in ['member', 'creator', 'administrator']:
+                    has_joined_channel = True
+                
+                group_member = bot.get_chat_member(f"@{GROUP_USERNAME}", user_id)
+                if group_member.status in ['member', 'creator', 'administrator']:
+                    has_joined_group = True
+            except Exception as e:
+                print(f"Error checking membership: {e}")
+
+            user_info = users_data.get(str(user_id))
+            if has_joined_channel and not user_info.get('has_received_bonus', False):
+                users_data[str(user_id)]['balance'] += 0.25
+                users_data[str(user_id)]['has_received_bonus'] = True
+                save_users(users_data)
+                bot.send_message(chat_id, "🎉 تهانينا! لقد حصلت على مكافأة 0.25 روبل لاشتراكك في القناة.")
+
+            if has_joined_channel and has_joined_group:
+                markup = types.InlineKeyboardMarkup()
+                markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
+                markup.row(types.InlineKeyboardButton('💰︙شحن رصيدك', callback_data='Payment'), types.InlineKeyboardButton('👤︙قسم الرشق', callback_data='sh'))
+                markup.row(types.InlineKeyboardButton('🅿️︙كشف الحساب', callback_data='Record'), types.InlineKeyboardButton('🛍︙قسم العروض', callback_data='Wo'))
+                markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
+                markup.row(types.InlineKeyboardButton('💰︙ربح روبل مجاني 🤑', callback_data='assignment'))
+                markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
+                markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
+                markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
+                bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text=f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*", parse_mode='Markdown', reply_markup=markup)
+            else:
+                bot.send_message(chat_id, "❌ لم يتم الاشتراك في جميع القنوات والمجموعات المطلوبة. يرجى الاشتراك ثم الضغط على 'تحقق' مرة أخرى.")
+            return
+
+        elif data == 'Payment':
             bot.send_message(chat_id, f"💰 *لشحن رصيدك، يرجى التواصل مع المشرف عبر هذا الحساب: @{ESM7AT}.*", parse_mode='Markdown')
             return
         elif data == 'sh':
@@ -80,9 +247,6 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             return
         elif data == 'saavmotamy':
             bot.send_message(chat_id, "👑 *خدمة الأرقام الملكية قادمة قريباً، تابعنا لمعرفة المزيد.*", parse_mode='Markdown')
-            return
-        elif data == 'assignment':
-            bot.send_message(chat_id, "💰 *يمكنك ربح روبل مجانية عن طريق إكمال بعض المهام. تابع الإعلانات لمعرفة التفاصيل.*", parse_mode='Markdown')
             return
         elif data == 'readycard-10':
             bot.send_message(chat_id, "💳 *متجر الكروت متوفر الآن! تواصل مع الدعم لشراء كرت.*", parse_mode='Markdown')
@@ -135,7 +299,6 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
         elif data.startswith('service_'):
             service = data.split('_')[1]
             markup = types.InlineKeyboardMarkup()
-            # Mapping for services
             if service == 'viotp':
                 markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2'))
                 markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3'))
@@ -189,8 +352,7 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             service, app_id = parts[2], parts[3]
             page = int(parts[5]) if len(parts) > 5 else 1
             
-            # Use the local data from the JSON file
-            local_countries = data_file.get('countries', {}).get(service, {}).get(app_id, {})
+            local_countries = load_data().get('countries', {}).get(service, {}).get(app_id, {})
             
             if not local_countries:
                 bot.send_message(chat_id, '❌ لا توجد دول متاحة لهذا التطبيق حاليًا.')
@@ -223,6 +385,8 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             parts = data.split('_')
             service, app_id, country_code = parts[1], parts[2], parts[3]
             
+            data_file = load_data()
+            users_data = load_users()
             country_info = data_file.get('countries', {}).get(service, {}).get(app_id, {}).get(country_code, {})
             price = country_info.get('price', 0)
             
@@ -235,7 +399,7 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             if service == 'viotp':
                 result = viotp_client.buy_number(app_id)
             elif service == 'smsman':
-                result = smsman_api.request_smsman_number(app_id, country_code)
+                result = smsman_api['request_smsman_number'](app_id, country_code)
             elif service == 'tigersms':
                 result = tiger_sms_client.get_number(app_id, country_code)
 
@@ -268,54 +432,54 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             parts = data.split('_')
             service, request_id = parts[2], parts[3]
             
+            active_requests = data_file.get('active_requests', {})
+            request_info = active_requests.get(request_id)
+
+            if not request_info:
+                bot.send_message(chat_id, '❌ هذا الطلب غير موجود أو انتهت صلاحيته.')
+                return
+
             if service == 'viotp':
                 result = viotp_client.get_otp(request_id)
             elif service == 'smsman':
-                result = smsman_api.get_smsman_code(request_id)
+                result = smsman_api['get_smsman_code'](request_id)
             elif service == 'tigersms':
                 result = tiger_sms_client.get_code(request_id)
-
-            if result and result.get('success') and result.get('code'):
-                otp_code = result.get('code')
-                active_requests = data_file.get('active_requests', {})
-                if request_id in active_requests:
-                    phone_number = active_requests[request_id]['phone_number']
-                    del active_requests[request_id]
-                    data_file['active_requests'] = active_requests
-                    save_data(data_file)
-                    bot.send_message(chat_id, f"✅ *رمزك هو: {otp_code}*\n\nالرقم: *{phone_number}*", parse_mode='Markdown')
-                else:
-                    bot.send_message(chat_id, "❌ حدث خطأ، لم يتم العثور على الطلب.")
+            
+            if result and result.get('success'):
+                code = result.get('code')
+                bot.send_message(chat_id, f"✅ تم استلام الكود بنجاح!\n\n*الكود:* `{code}`", parse_mode='Markdown')
+                del data_file['active_requests'][request_id]
+                save_data(data_file)
             else:
-                bot.send_message(chat_id, "❌ لا يوجد كود حتى الآن. حاول مجدداً.")
-                
+                bot.send_message(chat_id, '⏳ لم يتم استلام الكود بعد. يرجى المحاولة مرة أخرى لاحقاً.')
+
         elif data.startswith('cancel_'):
             parts = data.split('_')
             service, request_id = parts[1], parts[2]
             
-            result = None
-            if service == 'viotp':
-                result = viotp_client.cancel_request(request_id)
-            elif service == 'smsman':
-                result = smsman_api.cancel_smsman_request(request_id)
-            elif service == 'tigersms':
-                result = tiger_sms_client.cancel_request(request_id)
+            active_requests = data_file.get('active_requests', {})
+            request_info = active_requests.get(request_id)
             
-            if result and result.get('success'):
-                active_requests = data_file.get('active_requests', {})
-                if request_id in active_requests:
-                    request_info = active_requests[request_id]
-                    user_id_from_request = request_info['user_id']
-                    price_to_restore = request_info['price']
-                    
-                    users_data = load_users()
-                    if str(user_id_from_request) in users_data:
-                        users_data[str(user_id_from_request)]['balance'] += price_to_restore
-                        save_users(users_data)
-                    
-                    del active_requests[request_id]
-                    data_file['active_requests'] = active_requests
-                    save_data(data_file)
-                bot.send_message(chat_id, "✅ تم إلغاء الطلب بنجاح. سيتم استرجاع رصيدك.")
-            else:
-                bot.send_message(chat_id, "❌ فشل إلغاء الطلب. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.")
+            if not request_info or request_info['user_id'] != user_id:
+                bot.send_message(chat_id, '❌ هذا الطلب غير موجود أو لا يمكنك إلغاؤه.')
+                return
+            
+            try:
+                if service == 'viotp':
+                    viotp_client.cancel_number(request_id)
+                elif service == 'smsman':
+                    smsman_api['cancel_smsman_number'](request_id)
+                elif service == 'tigersms':
+                    tiger_sms_client.cancel_number(request_id)
+
+                price = request_info['price']
+                users_data[str(user_id)]['balance'] += price
+                save_users(users_data)
+                
+                del data_file['active_requests'][request_id]
+                save_data(data_file)
+                
+                bot.send_message(chat_id, f"✅ تم إلغاء الطلب بنجاح. تم استرجاع `{price}` روبل إلى رصيدك.", parse_mode='Markdown')
+            except Exception as e:
+                bot.send_message(chat_id, f"❌ حدث خطأ أثناء إلغاء الطلب: {e}")
