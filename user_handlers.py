@@ -1,5 +1,3 @@
-# user_handlers.py
-
 from telebot import types
 import json
 import time
