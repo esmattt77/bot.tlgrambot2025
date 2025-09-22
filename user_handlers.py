@@ -36,15 +36,22 @@ def save_users(users):
 
 def register_user(user_id, first_name, username):
     users_data = load_users()
-    if str(user_id) not in users_data:
-        users_data[str(user_id)] = {
+    user_id_str = str(user_id)
+    if user_id_str not in users_data:
+        users_data[user_id_str] = {
             'id': user_id,
             'first_name': first_name,
             'username': username,
             'balance': 0,
-            'join_date': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+            'join_date': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime()),
+            'purchases': []  # إضافة قائمة لتتبع المشتريات
         }
-        save_users(users_data)
+    else:
+        # تحديث الاسم واسم المستخدم في كل مرة للتأكد من أنها محدثة
+        users_data[user_id_str]['first_name'] = first_name
+        users_data[user_id_str]['username'] = username
+    save_users(users_data)
+
 
 def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
     
@@ -55,6 +62,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         first_name = message.from_user.first_name
         username = message.from_user.username
         
+        # استخدام دالة التسجيل المحدثة
         register_user(user_id, first_name, username)
 
         if message.text in ['/start', 'start/', 'بدء/']:
@@ -155,12 +163,26 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             markup.row(types.InlineKeyboardButton('سيرفر 1', callback_data='service_viotp'))
             markup.row(types.InlineKeyboardButton('سيرفر 2', callback_data='service_smsman'))
             markup.row(types.InlineKeyboardButton('سيرفر 3', callback_data='service_tigersms'))
-            markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
+            markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum')) # تغيير هذه إلى 'back'
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="📞 *اختر الخدمة التي تريد الشراء منها:*", parse_mode='Markdown', reply_markup=markup)
         
         elif data == 'Record':
-            balance = users_data.get(str(user_id), {}).get('balance', 0)
-            bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
+            user_info = users_data.get(str(user_id), {})
+            balance = user_info.get('balance', 0)
+            purchases = user_info.get('purchases', [])
+            
+            message_text = f"💰 رصيدك الحالي هو: *{balance}* روبل.\n\n"
+            if purchases:
+                message_text += "📝 **سجل مشترياتك الأخيرة:**\n"
+                for i, p in enumerate(purchases[-5:]): # عرض آخر 5 مشتريات فقط
+                    phone_number = p.get('phone_number', 'غير متوفر')
+                    price = p.get('price', 0)
+                    timestamp = p.get('timestamp', 'غير متوفر')
+                    message_text += f"*{i+1}. رقم {phone_number} بسعر {price} روبل في {timestamp}*\n"
+            else:
+                message_text += "❌ لا يوجد لديك مشتريات سابقة."
+
+            bot.send_message(chat_id, message_text, parse_mode='Markdown')
         
         elif data == 'back':
             markup = types.InlineKeyboardMarkup()
@@ -285,9 +307,22 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 request_id = result.get('id')
                 phone_number = result.get('number', result.get('Phone', 'غير متوفر'))
                 
+                # خصم الرصيد من المستخدم
                 users_data[str(user_id)]['balance'] -= price
+                
+                # تسجيل عملية الشراء في ملف المستخدم
+                users_data[str(user_id)]['purchases'].append({
+                    'request_id': request_id,
+                    'phone_number': phone_number,
+                    'service': service,
+                    'price': price,
+                    'status': 'pending',
+                    'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+                })
+                
                 save_users(users_data)
                 
+                # إضافة الطلب إلى قائمة الطلبات النشطة
                 active_requests = data_file.get('active_requests', {})
                 active_requests[request_id] = {
                     'user_id': user_id,
@@ -320,12 +355,22 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             if result and result.get('success') and result.get('code'):
                 otp_code = result.get('code')
                 data_file = load_data()
+                users_data = load_users()
                 active_requests = data_file.get('active_requests', {})
+                
                 if request_id in active_requests:
                     phone_number = active_requests[request_id]['phone_number']
                     del active_requests[request_id]
                     data_file['active_requests'] = active_requests
                     save_data(data_file)
+
+                    # تحديث حالة الطلب في سجل المستخدم
+                    for purchase in users_data.get(str(user_id), {}).get('purchases', []):
+                        if purchase.get('request_id') == request_id:
+                            purchase['status'] = 'completed'
+                            break
+                    save_users(users_data)
+
                     bot.send_message(chat_id, f"✅ *رمزك هو: {otp_code}*\n\nالرقم: *{phone_number}*", parse_mode='Markdown')
                 else:
                     bot.send_message(chat_id, "❌ حدث خطأ، لم يتم العثور على الطلب.")
@@ -346,15 +391,25 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             
             if result and result.get('success'):
                 data_file = load_data()
+                users_data = load_users()
                 active_requests = data_file.get('active_requests', {})
+                
                 if request_id in active_requests:
                     request_info = active_requests[request_id]
                     user_id_from_request = request_info['user_id']
                     price_to_restore = request_info['price']
                     
-                    users_data = load_users()
-                    if str(user_id_from_request) in users_data:
-                        users_data[str(user_id_from_request)]['balance'] += price_to_restore
+                    user_id_str = str(user_id_from_request)
+                    if user_id_str in users_data:
+                        # استرجاع الرصيد
+                        users_data[user_id_str]['balance'] += price_to_restore
+                        
+                        # إزالة الطلب من سجل المشتريات
+                        users_data[user_id_str]['purchases'] = [
+                            p for p in users_data[user_id_str]['purchases'] 
+                            if p.get('request_id') != request_id
+                        ]
+                        
                         save_users(users_data)
                     
                     del active_requests[request_id]
