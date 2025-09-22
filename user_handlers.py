@@ -1,21 +1,60 @@
-import telebot
 from telebot import types
 import json
 import time
 
-# Helper functions to load/save data (assuming they are in bot.py or utils.py)
-# For this example, we will assume they are available through the main bot file.
+# --- Helper Functions (Shared) ---
+def load_data():
+    try:
+        with open('data.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            if 'sh_services' not in data:
+                data['sh_services'] = {}
+            if 'countries' not in data:
+                data['countries'] = {}
+            if 'states' not in data:
+                data['states'] = {}
+            if 'active_requests' not in data:
+                data['active_requests'] = {}
+            return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {'users': {}, 'states': {}, 'countries': {}, 'active_requests': {}, 'sh_services': {}}
 
-def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
+def save_data(data):
+    with open('data.json', 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+def load_users():
+    try:
+        with open('users.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def save_users(users):
+    with open('users.json', 'w', encoding='utf-8') as f:
+        json.dump(users, f, indent=4, ensure_ascii=False)
+
+def register_user(user_id, first_name, username):
+    users_data = load_users()
+    if str(user_id) not in users_data:
+        users_data[str(user_id)] = {
+            'id': user_id,
+            'first_name': first_name,
+            'username': username,
+            'balance': 0,
+            'join_date': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+        }
+        save_users(users_data)
+
+def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
     
-    @bot.message_handler(func=lambda message: True)
+    @bot.message_handler(func=lambda message: message.from_user.id != DEVELOPER_ID)
     def handle_user_messages(message):
         chat_id = message.chat.id
         user_id = message.from_user.id
         first_name = message.from_user.first_name
         username = message.from_user.username
         
-        # This part of your code needs to be adapted
         register_user(user_id, first_name, username)
 
         if message.text in ['/start', 'start/', 'بدء/']:
@@ -34,13 +73,16 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             users_data = load_users()
             balance = users_data.get(str(user_id), {}).get('balance', 0)
             bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
-
-    @bot.callback_query_handler(func=lambda call: True)
+    
+    @bot.callback_query_handler(func=lambda call: call.from_user.id != DEVELOPER_ID)
     def handle_user_callbacks(call):
         chat_id = call.message.chat.id
         user_id = call.from_user.id
         message_id = call.message.message_id
         data = call.data
+        
+        data_file = load_data()
+        users_data = load_users()
         
         if data == 'Payment':
             bot.send_message(chat_id, f"💰 *لشحن رصيدك، يرجى التواصل مع المشرف عبر هذا الحساب: @{ESM7AT}.*", parse_mode='Markdown')
@@ -135,7 +177,6 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
         elif data.startswith('service_'):
             service = data.split('_')[1]
             markup = types.InlineKeyboardMarkup()
-            # Mapping for services
             if service == 'viotp':
                 markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2'))
                 markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3'))
@@ -189,8 +230,7 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             service, app_id = parts[2], parts[3]
             page = int(parts[5]) if len(parts) > 5 else 1
             
-            # Use the local data from the JSON file
-            local_countries = data_file.get('countries', {}).get(service, {}).get(app_id, {})
+            local_countries = load_data().get('countries', {}).get(service, {}).get(app_id, {})
             
             if not local_countries:
                 bot.send_message(chat_id, '❌ لا توجد دول متاحة لهذا التطبيق حاليًا.')
@@ -223,6 +263,8 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             parts = data.split('_')
             service, app_id, country_code = parts[1], parts[2], parts[3]
             
+            data_file = load_data()
+            users_data = load_users()
             country_info = data_file.get('countries', {}).get(service, {}).get(app_id, {}).get(country_code, {})
             price = country_info.get('price', 0)
             
@@ -235,7 +277,7 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             if service == 'viotp':
                 result = viotp_client.buy_number(app_id)
             elif service == 'smsman':
-                result = smsman_api.request_smsman_number(app_id, country_code)
+                result = smsman_api['request_smsman_number'](app_id, country_code)
             elif service == 'tigersms':
                 result = tiger_sms_client.get_number(app_id, country_code)
 
@@ -271,12 +313,13 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             if service == 'viotp':
                 result = viotp_client.get_otp(request_id)
             elif service == 'smsman':
-                result = smsman_api.get_smsman_code(request_id)
+                result = smsman_api['get_smsman_code'](request_id)
             elif service == 'tigersms':
                 result = tiger_sms_client.get_code(request_id)
 
             if result and result.get('success') and result.get('code'):
                 otp_code = result.get('code')
+                data_file = load_data()
                 active_requests = data_file.get('active_requests', {})
                 if request_id in active_requests:
                     phone_number = active_requests[request_id]['phone_number']
@@ -297,11 +340,12 @@ def setup_user_handlers(bot, data_file, users_data, ESM7AT, EESSMT, viotp_client
             if service == 'viotp':
                 result = viotp_client.cancel_request(request_id)
             elif service == 'smsman':
-                result = smsman_api.cancel_smsman_request(request_id)
+                result = smsman_api['cancel_smsman_request'](request_id)
             elif service == 'tigersms':
                 result = tiger_sms_client.cancel_request(request_id)
             
             if result and result.get('success'):
+                data_file = load_data()
                 active_requests = data_file.get('active_requests', {})
                 if request_id in active_requests:
                     request_info = active_requests[request_id]
