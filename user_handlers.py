@@ -23,7 +23,7 @@ def load_data():
             if 'active_requests' not in data:
                 data['active_requests'] = {}
             return data
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (FileNotFoundEror, json.JSONDecodeError):
         return {'users': {}, 'states': {}, 'countries': {}, 'active_requests': {}, 'sh_services': {}}
 
 def save_data(data):
@@ -305,10 +305,13 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 result = viotp_client.buy_number(app_id)
             elif service == 'smsman':
                 result = smsman_api['request_smsman_number'](app_id, country_code)
+                if result and 'request_id' in result:
+                    result['success'] = True
+                    result['id'] = result['request_id']
+                    result['number'] = result['Phone']
             elif service == 'tigersms':
                 result = tiger_sms_client.get_number(app_id, country_code)
 
-            # 🟢 سطر الطباعة المضاف هنا - يستخدم logging
             logging.info(f"Response from {service}: {result}")
 
             if result and result.get('success'):
@@ -334,7 +337,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     'phone_number': phone_number,
                     'status': 'pending',
                     'service': service,
-                    'price': price
+                    'price': price,
+                    'message_id': message_id # حفظ معرف الرسالة
                 }
                 data_file['active_requests'] = active_requests
                 save_data(data_file)
@@ -350,6 +354,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             parts = data.split('_')
             service, request_id = parts[2], parts[3]
             
+            result = None
             if service == 'viotp':
                 result = viotp_client.get_otp(request_id)
             elif service == 'smsman':
@@ -379,7 +384,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 else:
                     bot.send_message(chat_id, "❌ حدث خطأ، لم يتم العثور على الطلب.")
             else:
-                bot.send_message(chat_id, "❌ لا يوجد كود حتى الآن. حاول مجدداً.")
+                bot.send_message(chat_id, "❌ لا يوجد كود حتى الآن. حاول مجدداً.", reply_markup=call.message.reply_markup)
                 
         elif data.startswith('cancel_'):
             parts = data.split('_')
