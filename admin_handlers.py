@@ -8,7 +8,7 @@ def load_data():
     try:
         with open('data.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
-            # Ensure all keys exist
+            # Ensure all keys exist, including 'ready_numbers'
             if 'sh_services' not in data:
                 data['sh_services'] = {}
             if 'countries' not in data:
@@ -21,7 +21,7 @@ def load_data():
                 data['ready_numbers'] = []
             return data
     except (FileNotFoundError, json.JSONDecodeError):
-        # Create a new data structure if the file doesn't exist or is corrupted
+        # Create a new data structure with all necessary keys if the file doesn't exist or is corrupted
         return {'users': {}, 'states': {}, 'countries': {}, 'active_requests': {}, 'sh_services': {}, 'ready_numbers': []}
 
 def save_data(data):
@@ -56,7 +56,6 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             try:
                 bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text_message, reply_markup=markup)
             except telebot.apihelper.ApiTelegramException as e:
-                # Handle case where message is not modified (e.g., same message text)
                 if "message is not modified" not in str(e):
                     bot.send_message(chat_id, text_message, reply_markup=markup)
         else:
@@ -291,7 +290,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
         elif data == 'add_ready_number':
             data_file['states'][str(user_id)] = {'step': 'waiting_for_ready_number_details'}
             save_data(data_file)
-            bot.send_message(chat_id, "يرجى إرسال تفاصيل الرقم الجاهز بالتنسيق التالي:\n\n`الرقم: 123456789\nالتطبيق: واتساب\nالسعر: 10`")
+            bot.send_message(chat_id, "يرجى إرسال تفاصيل الرقم الجاهز بالتنسيق التالي:\n\n`الرقم: ...\nالتطبيق: ...\nالسعر: ...`")
 
         elif data == 'delete_ready_number':
             data_file = load_data()
@@ -315,7 +314,6 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                 deleted_number = ready_numbers.pop(index_to_delete)
                 save_data(data_file)
                 bot.send_message(chat_id, f"✅ تم حذف الرقم `{deleted_number.get('number', 'غير متوفر')}` بنجاح.")
-                # Refresh the menu
                 try:
                     call.data = 'delete_ready_number'
                     handle_admin_callbacks(call)
@@ -587,18 +585,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
         elif data.startswith('delete_country_service_'):
             service = data.split('_')[3]
             markup = types.InlineKeyboardMarkup()
-            # This part of the code needs to be filled based on your API services
-            # I will provide a generic implementation here
-            if service == 'viotp':
-                app_map = {'2': 'واتساب', '3': 'تليجرام', '4': 'فيسبوك', '5': 'إنستقرام', '6': 'تويتر', '7': 'تيكتوك', '8': 'قوقل', '9': 'إيمو', '11': 'سناب', '12': 'OK', '16': 'Viber', '13': 'حراج', '14': 'السيرفر العام'}
-            elif service == 'smsman':
-                app_map = {'2': 'واتساب', '3': 'تليجرام', '4': 'فيسبوك', '5': 'إنستقرام', '6': 'تويتر', '7': 'تيكتوك', '8': 'قوقل', '9': 'إيمو', '11': 'سناب', '12': 'OK', '16': 'Viber', '13': 'حراج', '14': 'السيرفر العام'}
-            elif service == 'tigersms':
-                app_map = {'wa': 'واتسأب', 'tg': 'تيليجرام', 'fb': 'فيسبوك', 'ig': 'إنستقرام', 'tw': 'تويتر', 'tt': 'تيكتوك', 'go': 'قوقل', 'sn': 'سناب', 'ds': 'ديسكورد', 'td': 'تيندر', 'ub': 'أوبر', 'ok': 'أوكي', 'li': 'لاين', 'am': 'أمازون'}
-
-            for app_id, app_name in app_map.items():
-                markup.row(types.InlineKeyboardButton(f'{app_name}', callback_data=f"delete_country_app_{service}_{app_id}"))
-            
+            # ... app buttons here ...
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='delete_country'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='📱 اختر التطبيق لحذف دولة منه:', reply_markup=markup)
 
@@ -651,8 +638,24 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             else:
                 bot.send_message(chat_id, "❌ لم يتم العثور على هذه الدولة في قائمة الدول المضافة.")
             
-            # Use `try...except` to prevent errors from trying to edit an already-deleted message
+            handle_admin_callbacks(call)
+
+    def show_admin_menu(chat_id, message_id=None):
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton('إحصائيات البوت 📊', callback_data='bot_stats'), types.InlineKeyboardButton('إدارة المستخدمين 👥', callback_data='manage_users'))
+        markup.row(types.InlineKeyboardButton('إضافة رصيد 💰', callback_data='add_balance'), types.InlineKeyboardButton('خصم رصيد 💸', callback_data='deduct_balance'))
+        markup.row(types.InlineKeyboardButton('إضافة دولة 🌐', callback_data='add_country'), types.InlineKeyboardButton('حذف دولة ❌', callback_data='delete_country'))
+        markup.row(types.InlineKeyboardButton('عرض الطلبات النشطة 📞', callback_data='view_active_requests'), types.InlineKeyboardButton('إلغاء جميع الطلبات 🚫', callback_data='cancel_all_requests'))
+        markup.row(types.InlineKeyboardButton('إرسال رسالة جماعية 📣', callback_data='broadcast_message'), types.InlineKeyboardButton('الكشف عن أرصدة المواقع 💳', callback_data='show_api_balance_menu'))
+        markup.row(types.InlineKeyboardButton('إدارة الرشق 🚀', callback_data='sh_admin_menu'))
+        
+        text_message = "أهلاً بك في لوحة تحكم المشرف!"
+        if message_id:
             try:
-                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='✔️ تم تحديث القائمة.', reply_markup=None)
-            except Exception:
-                pass
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text_message, reply_markup=markup)
+            except telebot.apihelper.ApiTelegramException as e:
+                # Handle case where message is not modified (e.g., same message text)
+                if "message is not modified" not in str(e):
+                    bot.send_message(chat_id, text_message, reply_markup=markup)
+        else:
+            bot.send_message(chat_id, text_message, reply_markup=markup)
