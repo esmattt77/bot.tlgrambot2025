@@ -1,181 +1,19 @@
-import telebot
 from telebot import types
 import json
 import time
 import logging
-import requests
 
-# Set your API token and other information
-# Note: These variables will be passed from bot.py
-# The initial assignments here are not used, but kept for clarity
-API_TOKEN = None
-DEVELOPER_ID = None
-EESSMT = None
-ESM7AT = None
+# تهيئة نظام التسجيل
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
-# Service API keys and URLs
-VIOTP_API_KEY = None
-SMSMAN_API_KEY = None
-TIGERSMS_API_KEY = None
-
-# --- API Clients (for external services) ---
-class ViOtpClient:
-    def __init__(self, api_key):
-        self.base_url = "https://api.viotps.com/api/"
-        self.api_key = api_key
-
-    def buy_number(self, app_id):
-        url = f"{self.base_url}buy-number"
-        params = {"api_key": self.api_key, "service_id": app_id}
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logging.error(f"ViOTP API error: {e}")
-            return {"success": False}
-
-    def get_otp(self, request_id):
-        url = f"{self.base_url}get-otp"
-        params = {"api_key": self.api_key, "request_id": request_id}
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logging.error(f"ViOTP API error: {e}")
-            return {"success": False}
-    
-    def cancel_request(self, request_id):
-        url = f"{self.base_url}cancel-request"
-        params = {"api_key": self.api_key, "request_id": request_id}
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logging.error(f"ViOTP API error: {e}")
-            return {"success": False}
-
-class SMSManAPI:
-    def __init__(self, api_key):
-        self.base_url = "http://api.sms-man.com/stubs/handler_api.php"
-        self.api_key = api_key
-
-    def request_smsman_number(self, app_id, country_code):
-        url = self.base_url
-        params = {
-            "api_key": self.api_key,
-            "action": "getNumber",
-            "service": app_id,
-            "country": country_code
-        }
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            # Special handling for SMSMan response
-            if "ACCESS_NUMBER" in response.text:
-                parts = response.text.split(':')
-                return {'request_id': parts[1], 'Phone': parts[2]}
-            else:
-                return {"success": False}
-        except requests.exceptions.RequestException as e:
-            logging.error(f"SMSMan API error: {e}")
-            return {"success": False}
-
-    def get_smsman_code(self, request_id):
-        url = self.base_url
-        params = {
-            "api_key": self.api_key,
-            "action": "getStatus",
-            "id": request_id
-        }
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            if "STATUS_OK" in response.text:
-                return {"success": True, "code": response.text.split(':')[1]}
-            elif "STATUS_WAIT_CODE" in response.text:
-                return {"success": False, "code": None}
-            else:
-                return {"success": False, "code": None}
-        except requests.exceptions.RequestException as e:
-            logging.error(f"SMSMan API error: {e}")
-            return {"success": False, "code": None}
-
-    def cancel_smsman_request(self, request_id):
-        url = self.base_url
-        params = {
-            "api_key": self.api_key,
-            "action": "setStatus",
-            "id": request_id,
-            "status": "8"  # Cancel status
-        }
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            if "STATUS_CANCEL" in response.text:
-                return {"success": True}
-            else:
-                return {"success": False}
-        except requests.exceptions.RequestException as e:
-            logging.error(f"SMSMan API error: {e}")
-            return {"success": False}
-
-class TigerSmsClient:
-    def __init__(self, api_key):
-        self.base_url = "https://tigersms.top/api/"
-        self.api_key = api_key
-
-    def get_number(self, app_id, country_code):
-        url = f"{self.base_url}getNumber"
-        params = {
-            "token": self.api_key,
-            "service": app_id,
-            "country": country_code
-        }
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logging.error(f"TigerSMS API error: {e}")
-            return {"success": False}
-
-    def get_code(self, request_id):
-        url = f"{self.base_url}getCode"
-        params = {
-            "token": self.api_key,
-            "request_id": request_id
-        }
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logging.error(f"TigerSMS API error: {e}")
-            return {"success": False}
-
-    def cancel_request(self, request_id):
-        url = f"{self.base_url}cancelNumber"
-        params = {
-            "token": self.api_key,
-            "request_id": request_id
-        }
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logging.error(f"TigerSMS API error: {e}")
-            return {"success": False}
-
-# --- Data Management Functions ---
+# --- Helper Functions (Shared) ---
 def load_data():
     try:
         with open('data.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
-            # Ensure all keys exist
             if 'sh_services' not in data:
                 data['sh_services'] = {}
             if 'countries' not in data:
@@ -185,8 +23,7 @@ def load_data():
             if 'active_requests' not in data:
                 data['active_requests'] = {}
             return data
-    except (FileNotFoundError, json.JSONDecodeError):
-        # Create a new data structure if the file doesn't exist or is corrupted
+    except (FileNotFoundEror, json.JSONDecodeError):
         return {'users': {}, 'states': {}, 'countries': {}, 'active_requests': {}, 'sh_services': {}}
 
 def save_data(data):
@@ -217,20 +54,15 @@ def register_user(user_id, first_name, username):
             'purchases': []
         }
     else:
-        # Update username and first name in case they change
         users_data[user_id_str]['first_name'] = first_name
         users_data[user_id_str]['username'] = username
     save_users(users_data)
 
 
-# Main setup function
 def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
     
-    # --- Bot Handlers ---
-
-    @bot.message_handler(commands=['start', 'balance'])
-    @bot.message_handler(func=lambda message: message.text in ['/start', 'start/', 'بدء/', '/balance', 'رصيدي'])
-    def handle_user_commands(message):
+    @bot.message_handler(func=lambda message: message.from_user.id != DEVELOPER_ID)
+    def handle_user_messages(message):
         chat_id = message.chat.id
         user_id = message.from_user.id
         first_name = message.from_user.first_name
@@ -254,7 +86,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             users_data = load_users()
             balance = users_data.get(str(user_id), {}).get('balance', 0)
             bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
-
+    
     @bot.callback_query_handler(func=lambda call: call.from_user.id != DEVELOPER_ID)
     def handle_user_callbacks(call):
         chat_id = call.message.chat.id
@@ -354,9 +186,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     message_text += f"*{i+1}. رقم {phone_number} بسعر {price} روبل في {timestamp}*\n"
             else:
                 message_text += "❌ لا يوجد لديك مشتريات سابقة."
-            
-            bot.send_message(chat_id, message_text, parse_mode='Markdown')
 
+            bot.send_message(chat_id, message_text, parse_mode='Markdown')
+        
         elif data == 'back':
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
@@ -469,11 +301,10 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
                 return
 
-            result = None
             if service == 'viotp':
                 result = viotp_client.buy_number(app_id)
             elif service == 'smsman':
-                result = smsman_api.request_smsman_number(app_id, country_code)
+                result = smsman_api['request_smsman_number'](app_id, country_code)
                 if result and 'request_id' in result:
                     result['success'] = True
                     result['id'] = result['request_id']
@@ -488,7 +319,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 phone_number = result.get('number', result.get('Phone', 'غير متوفر'))
                 
                 users_data[str(user_id)]['balance'] -= price
-                remaining_balance = users_data[str(user_id)]['balance']
                 
                 users_data[str(user_id)]['purchases'].append({
                     'request_id': request_id,
@@ -508,7 +338,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     'status': 'pending',
                     'service': service,
                     'price': price,
-                    'message_id': message_id
+                    'message_id': message_id # حفظ معرف الرسالة
                 }
                 data_file['active_requests'] = active_requests
                 save_data(data_file)
@@ -516,34 +346,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 markup = types.InlineKeyboardMarkup()
                 markup.row(types.InlineKeyboardButton('✅ الحصول على الكود', callback_data=f'get_otp_{service}_{request_id}'))
                 markup.row(types.InlineKeyboardButton('❌ إلغاء الطلب', callback_data=f'cancel_{service}_{request_id}'))
-
-                service_name = 'سيرفر 1' if service == 'viotp' else ('سيرفر 2' if service == 'smsman' else 'سيرفر 3')
-                
-                app_map = {
-                    '2': 'واتساب', '3': 'تيليجرام', '4': 'فيسبوك', '5': 'إنستقرام',
-                    '6': 'تويتر', '7': 'تيكتوك', '8': 'قوقل', '9': 'إيمو',
-                    '11': 'سناب', '12': 'OK', '16': 'Viber', '13': 'حراج',
-                    '14': 'السيرفر العام', 'wa': 'واتساب', 'tg': 'تيليجرام',
-                    'fb': 'فيسبوك', 'ig': 'إنستقرام', 'tw': 'تويتر',
-                    'tt': 'تيكتوك', 'go': 'قوقل', 'sn': 'سناب', 'ds': 'ديسكورد',
-                    'td': 'تيندر', 'ub': 'أوبر', 'ok': 'أوكي', 'li': 'لاين',
-                    'am': 'أمازون'
-                }
-                app_name = app_map.get(app_id, 'غير معروف')
-                country_name = country_info.get('name', 'غير معروف')
-                
-                message_text = (
-                    f"**☎️ - الرقم:** `{phone_number}`\n"
-                    f"**🧿 - التطبيق:** `{app_name}`\n"
-                    f"**📥 - الدولة:** `{country_name}`\n"
-                    f"**🔥 - الأيدي:** `{user_id}`\n"
-                    f"**💸 - السعر:** `Ꝑ{price}`\n"
-                    f"**🤖 - الرصيد المتبقي:** `{remaining_balance}`\n"
-                    f"**🔄 - معرف المشتري:** `@{users_data[str(user_id)].get('username', 'غير متوفر')}`\n"
-                    f"**🎦 - الموقع:** `soper.com`"
-                )
-
-                bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
+                bot.send_message(chat_id, f"✅ تم طلب الرقم بنجاح: *{phone_number}*\n\nاضغط على الزر للحصول على الكود أو إلغاء الطلب.", parse_mode='Markdown', reply_markup=markup)
             else:
                 bot.send_message(chat_id, "❌ فشل طلب الرقم. قد يكون غير متوفر أو أن رصيدك في الخدمة غير كافٍ.")
                 
@@ -555,7 +358,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             if service == 'viotp':
                 result = viotp_client.get_otp(request_id)
             elif service == 'smsman':
-                result = smsman_api.get_smsman_code(request_id)
+                result = smsman_api['get_smsman_code'](request_id)
             elif service == 'tigersms':
                 result = tiger_sms_client.get_code(request_id)
 
@@ -591,7 +394,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             if service == 'viotp':
                 result = viotp_client.cancel_request(request_id)
             elif service == 'smsman':
-                result = smsman_api.cancel_smsman_request(request_id)
+                result = smsman_api['cancel_smsman_request'](request_id)
             elif service == 'tigersms':
                 result = tiger_sms_client.cancel_request(request_id)
             
