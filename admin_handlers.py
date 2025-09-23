@@ -17,11 +17,10 @@ def load_data():
                 data['states'] = {}
             if 'active_requests' not in data:
                 data['active_requests'] = {}
-            if 'ready_numbers' not in data:  # New key for ready numbers
+            if 'ready_numbers' not in data:
                 data['ready_numbers'] = []
             return data
     except (FileNotFoundError, json.JSONDecodeError):
-        # Create a new data structure with all necessary keys if the file doesn't exist or is corrupted
         return {'users': {}, 'states': {}, 'countries': {}, 'active_requests': {}, 'sh_services': {}, 'ready_numbers': []}
 
 def save_data(data):
@@ -45,11 +44,11 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
         markup = types.InlineKeyboardMarkup()
         markup.row(types.InlineKeyboardButton('إحصائيات البوت 📊', callback_data='bot_stats'), types.InlineKeyboardButton('إدارة المستخدمين 👥', callback_data='manage_users'))
         markup.row(types.InlineKeyboardButton('إضافة رصيد 💰', callback_data='add_balance'), types.InlineKeyboardButton('خصم رصيد 💸', callback_data='deduct_balance'))
-        markup.row(types.InlineKeyboardButton('إدارة الأرقام الجاهزة 🔢', callback_data='ready_numbers_menu')) # New button
+        markup.row(types.InlineKeyboardButton('إدارة الأرقام الجاهزة 🔢', callback_data='ready_numbers_menu'))
         markup.row(types.InlineKeyboardButton('إضافة دولة 🌐', callback_data='add_country'), types.InlineKeyboardButton('حذف دولة ❌', callback_data='delete_country'))
         markup.row(types.InlineKeyboardButton('عرض الطلبات النشطة 📞', callback_data='view_active_requests'), types.InlineKeyboardButton('إلغاء جميع الطلبات 🚫', callback_data='cancel_all_requests'))
         markup.row(types.InlineKeyboardButton('إرسال رسالة جماعية 📣', callback_data='broadcast_message'), types.InlineKeyboardButton('الكشف عن أرصدة المواقع 💳', callback_data='show_api_balance_menu'))
-        markup.row(types.InlineKeyboardButton('إدارة الرشق 🚀', callback_data='sh_admin_menu')) # New button
+        markup.row(types.InlineKeyboardButton('إدارة الرشق 🚀', callback_data='sh_admin_menu'))
         
         text_message = "أهلاً بك في لوحة تحكم المشرف!"
         if message_id:
@@ -65,7 +64,6 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
     def handle_admin_messages(message):
         chat_id = message.chat.id
         user_id = message.from_user.id
-        
         data_file = load_data()
         state = data_file.get('states', {}).get(str(user_id))
     
@@ -73,7 +71,6 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             show_admin_menu(chat_id)
             return
         
-        # --- Existing state handlers ---
         if state and state.get('step') == 'waiting_for_add_coin_id':
             target_id = message.text
             data_file['states'][str(user_id)]['target_id'] = target_id
@@ -95,7 +92,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                     bot.send_message(target_id, f"🎉 تم إضافة {amount} روبل إلى رصيدك من قبل المشرف!")
                 except telebot.apihelper.ApiException as e:
                     bot.send_message(chat_id, f"✅ تم إضافة الرصيد بنجاح، لكن لا يمكن إرسال رسالة للمستخدم: {e}")
-
+                
                 del data_file['states'][str(user_id)]
                 save_data(data_file)
                 bot.send_message(chat_id, f"✅ تم إضافة {amount} روبل إلى المستخدم ذو الآيدي: {target_id}")
@@ -203,7 +200,6 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                 del data_file['states'][str(user_id)]
                 save_data(data_file)
 
-        # --- New Ready Numbers State Handler ---
         elif state and state.get('step') == 'waiting_for_ready_number_details':
             try:
                 lines = message.text.split('\n')
@@ -237,7 +233,6 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             except (ValueError, IndexError):
                 bot.send_message(chat_id, "❌ تنسيق غير صحيح. يرجى استخدام النموذج المحدد: `الرقم: ...\nالتطبيق: ...\nالسعر: ...`")
 
-        # --- New SH State Handler ---
         elif state and state.get('step') == 'waiting_for_sh_service_name':
             service_name = message.text
             data_file['states'][str(user_id)]['service_name'] = service_name
@@ -281,7 +276,6 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="👥 اختر إجراء لإدارة المستخدمين:", reply_markup=markup)
             return
         
-        # --- Ready Numbers Callbacks ---
         elif data == 'ready_numbers_menu':
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('➕ إضافة رقم جاهز', callback_data='add_ready_number'))
@@ -324,7 +318,6 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             else:
                 bot.send_message(chat_id, "❌ الرقم المحدد غير موجود.")
         
-        # --- SH Callbacks ---
         elif data == 'sh_admin_menu':
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('➕ إضافة خدمة رشق', callback_data='add_sh_service'))
@@ -372,7 +365,6 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
         
-        # --- Existing Callbacks ---
         elif data == 'add_balance':
             data_file['states'][str(user_id)] = {'step': 'waiting_for_add_coin_id'}
             save_data(data_file)
@@ -465,13 +457,13 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='add_country'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='📱 اختر التطبيق:', reply_markup=markup)
-        
+
         elif data.startswith('add_country_app_'):
             parts = data.split('_')
             service = parts[3]
             app_id = parts[4]
             page = int(parts[6]) if len(parts) > 6 else 1
-
+            
             try:
                 api_countries = {}
                 if service == 'viotp':
@@ -480,20 +472,23 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                         for item in api_services_data['data']:
                             if str(item.get('service_id')) == str(app_id):
                                 for country in item.get('countries', []):
-                                    api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
+                                    if 'country_code' in country and 'country_name' in country and 'price' in country:
+                                        api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
                                 break
                 elif service == 'smsman':
                     api_countries_list = smsman_api['get_smsman_countries'](app_id)
-                    if api_countries_list:
+                    if api_countries_list and isinstance(api_countries_list, list):
                         for item in api_countries_list:
-                            api_countries[item['id']] = {'name': item['name'], 'price': item['price']}
+                            if isinstance(item, dict) and 'id' in item and 'name' in item and 'price' in item:
+                                api_countries[item['id']] = {'name': item['name'], 'price': item['price']}
                 elif service == 'tigersms':
                     api_countries_list = tiger_sms_client.get_countries(app_id)
-                    if api_countries_list and api_countries_list.get('success'):
+                    if api_countries_list and api_countries_list.get('success') and 'countries' in api_countries_list:
                         for item in api_countries_list.get('countries', []):
-                            api_countries[item['country_code']] = {'name': item['country_name'], 'price': item['price']}
+                            if 'country_code' in item and 'country_name' in item and 'price' in item:
+                                api_countries[item['country_code']] = {'name': item['country_name'], 'price': item['price']}
             except Exception as e:
-                bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}')
+                bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}\n(الخطأ في معالجة بيانات الدول).')
                 return
             
             if not api_countries:
@@ -537,20 +532,23 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                         for item in api_services_data['data']:
                             if str(item.get('service_id')) == str(app_id):
                                 for country in item.get('countries', []):
-                                    api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
+                                    if 'country_code' in country and 'country_name' in country and 'price' in country:
+                                        api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
                                 break
                 elif service == 'smsman':
                     api_countries_list = smsman_api['get_smsman_countries'](app_id)
-                    if api_countries_list:
+                    if api_countries_list and isinstance(api_countries_list, list):
                         for item in api_countries_list:
-                            api_countries[item['id']] = {'name': item['name'], 'price': item['price']}
+                            if isinstance(item, dict) and 'id' in item and 'name' in item and 'price' in item:
+                                api_countries[item['id']] = {'name': item['name'], 'price': item['price']}
                 elif service == 'tigersms':
                     api_countries_list = tiger_sms_client.get_countries(app_id)
-                    if api_countries_list and api_countries_list.get('success'):
+                    if api_countries_list and api_countries_list.get('success') and 'countries' in api_countries_list:
                         for item in api_countries_list.get('countries', []):
-                            api_countries[item['country_code']] = {'name': item['country_name'], 'price': item['price']}
+                            if 'country_code' in item and 'country_name' in item and 'price' in item:
+                                api_countries[item['country_code']] = {'name': item['country_name'], 'price': item['price']}
             except Exception as e:
-                bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}')
+                bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}\n(الخطأ في معالجة بيانات الدول).')
                 return
                 
             country_info = api_countries.get(country_code, {})
@@ -648,4 +646,3 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                 bot.send_message(chat_id, "❌ لم يتم العثور على هذه الدولة في قائمة الدول المضافة.")
             
             handle_admin_callbacks(call)
-
