@@ -4,17 +4,18 @@ import json
 import time
 import logging
 import requests
+import os  # <<=== هذا السطر الجديد
 
 # Set your API token and other information
-API_TOKEN = 'YOUR_BOT_TOKEN'  # قم بتغيير هذا بـ API توكن الخاص بك
-DEVELOPER_ID = 123456789  # قم بتغيير هذا بمعرف المطور الخاص بك
-ESM7AT = "ESM7AT"  # اسم حساب المشرف
-EESSMT = "EESSMT"  # اسم قناة البوت
+API_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+DEVELOPER_ID = os.environ.get('DEVELOPER_ID')
+EESSMT = os.environ.get('EESSMT')
+ESM7AT = os.environ.get('ESM7AT')
 
 # Service API keys and URLs
-VIOTP_API_KEY = "YOUR_VIOTP_API_KEY"
-SMSMAN_API_KEY = "YOUR_SMSMAN_API_KEY"
-TIGERSMS_API_KEY = "YOUR_TIGERSMS_API_KEY"
+VIOTP_API_KEY = os.environ.get('VIOTP_API_KEY')
+SMSMAN_API_KEY = os.environ.get('SMSMAN_API_KEY')
+TIGERSMS_API_KEY = os.environ.get('TIGER_SMS_API_KEY')
 
 # --- Logging Setup ---
 logging.basicConfig(
