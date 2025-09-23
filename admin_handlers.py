@@ -16,9 +16,11 @@ def load_data():
                 data['states'] = {}
             if 'active_requests' not in data:
                 data['active_requests'] = {}
+            if 'ready_numbers' not in data:  # Added for ready numbers
+                data['ready_numbers'] = []
             return data
     except (FileNotFoundError, json.JSONDecodeError):
-        return {'users': {}, 'states': {}, 'countries': {}, 'active_requests': {}, 'sh_services': {}}
+        return {'users': {}, 'states': {}, 'countries': {}, 'active_requests': {}, 'sh_services': {}, 'ready_numbers': []}
 
 def save_data(data):
     with open('data.json', 'w', encoding='utf-8') as f:
@@ -49,6 +51,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             show_admin_menu(chat_id)
             return
         
+        # --- Existing state handlers ---
         if state and state.get('step') == 'waiting_for_add_coin_id':
             target_id = message.text
             data_file['states'][str(user_id)]['target_id'] = target_id
@@ -197,6 +200,39 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                 save_data(data_file)
             except ValueError:
                 bot.send_message(chat_id, "❌ السعر غير صحيح. يرجى إدخال رقم.")
+        
+        # --- Ready Numbers state handlers ---
+        elif state and state.get('step') == 'waiting_for_ready_number_details':
+            try:
+                lines = message.text.split('\n')
+                details = {}
+                for line in lines:
+                    key, value = line.split(':')
+                    details[key.strip()] = value.strip()
+                
+                number = details.get('الرقم')
+                app = details.get('التطبيق')
+                price = details.get('السعر')
+
+                if not all([number, app, price]):
+                    raise ValueError("Missing details")
+                
+                price = int(price)
+                
+                data_file = load_data()
+                data_file['ready_numbers'].append({
+                    'number': number,
+                    'app': app,
+                    'price': price,
+                    'status': 'available'
+                })
+                save_data(data_file)
+                
+                bot.send_message(chat_id, "✅ تم إضافة الرقم الجاهز بنجاح.")
+                del data_file['states'][str(user_id)]
+                save_data(data_file)
+            except (ValueError, IndexError):
+                bot.send_message(chat_id, "❌ تنسيق غير صحيح. يرجى استخدام النموذج المحدد: `الرقم: ...\nالتطبيق: ...\nالسعر: ...`")
 
     @bot.callback_query_handler(func=lambda call: call.from_user.id == DEVELOPER_ID)
     def handle_admin_callbacks(call):
@@ -221,6 +257,48 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="👥 اختر إجراء لإدارة المستخدمين:", reply_markup=markup)
             return
         
+        # --- Ready Numbers Callbacks ---
+        elif data == 'ready_numbers_menu':
+            markup = types.InlineKeyboardMarkup()
+            markup.row(types.InlineKeyboardButton('➕ إضافة رقم جاهز', callback_data='add_ready_number'))
+            markup.row(types.InlineKeyboardButton('➖ حذف رقم جاهز', callback_data='delete_ready_number'))
+            markup.row(types.InlineKeyboardButton('🔙 رجوع', callback_data='admin_main_menu'))
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🔢 *إدارة الأرقام الجاهزة:*", parse_mode='Markdown', reply_markup=markup)
+        
+        elif data == 'add_ready_number':
+            data_file['states'][str(user_id)] = {'step': 'waiting_for_ready_number_details'}
+            save_data(data_file)
+            bot.send_message(chat_id, "يرجى إرسال تفاصيل الرقم الجاهز بالتنسيق التالي:\n\n`الرقم: 123456789\nالتطبيق: واتساب\nالسعر: 10`")
+
+        elif data == 'delete_ready_number':
+            data_file = load_data()
+            ready_numbers = data_file.get('ready_numbers', [])
+            if not ready_numbers:
+                bot.send_message(chat_id, "❌ لا توجد أرقام جاهزة لحذفها.")
+                return
+            
+            markup = types.InlineKeyboardMarkup()
+            for i, num_data in enumerate(ready_numbers):
+                markup.row(types.InlineKeyboardButton(f"❌ حذف {num_data.get('number', 'غير متوفر')}", callback_data=f'confirm_delete_ready_{i}'))
+            markup.row(types.InlineKeyboardButton('🔙 رجوع', callback_data='ready_numbers_menu'))
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر الرقم الذي تريد حذفه:", reply_markup=markup)
+
+        elif data.startswith('confirm_delete_ready_'):
+            index_to_delete = int(data.split('_')[-1])
+            data_file = load_data()
+            ready_numbers = data_file.get('ready_numbers', [])
+            
+            if 0 <= index_to_delete < len(ready_numbers):
+                deleted_number = ready_numbers.pop(index_to_delete)
+                save_data(data_file)
+                bot.send_message(chat_id, f"✅ تم حذف الرقم `{deleted_number.get('number', 'غير متوفر')}` بنجاح.")
+                # Refresh the menu
+                call.data = 'delete_ready_number'
+                handle_admin_callbacks(call)
+            else:
+                bot.send_message(chat_id, "❌ الرقم المحدد غير موجود.")
+        
+        # --- Existing callbacks ---
         elif data == 'add_balance':
             data_file['states'][str(user_id)] = {'step': 'waiting_for_add_coin_id'}
             save_data(data_file)
@@ -552,6 +630,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
         markup = types.InlineKeyboardMarkup()
         markup.row(types.InlineKeyboardButton('إحصائيات البوت 📊', callback_data='bot_stats'), types.InlineKeyboardButton('إدارة المستخدمين 👥', callback_data='manage_users'))
         markup.row(types.InlineKeyboardButton('إضافة رصيد 💰', callback_data='add_balance'), types.InlineKeyboardButton('خصم رصيد 💸', callback_data='deduct_balance'))
+        markup.row(types.InlineKeyboardButton('إدارة الأرقام الجاهزة 🔢', callback_data='ready_numbers_menu')) # Added new button
         markup.row(types.InlineKeyboardButton('إضافة دولة 🌐', callback_data='add_country'), types.InlineKeyboardButton('حذف دولة ❌', callback_data='delete_country'))
         markup.row(types.InlineKeyboardButton('عرض الطلبات النشطة 📞', callback_data='view_active_requests'), types.InlineKeyboardButton('إلغاء جميع الطلبات 🚫', callback_data='cancel_all_requests'))
         markup.row(types.InlineKeyboardButton('إرسال رسالة جماعية 📣', callback_data='broadcast_message'), types.InlineKeyboardButton('الكشف عن أرصدة المواقع 💳', callback_data='show_api_balance_menu'))
@@ -562,4 +641,3 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text_message, reply_markup=markup)
         else:
             bot.send_message(chat_id, text_message, reply_markup=markup)
-
