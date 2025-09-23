@@ -23,7 +23,7 @@ def load_data():
             if 'active_requests' not in data:
                 data['active_requests'] = {}
             return data
-    except (FileNotFoundEror, json.JSONDecodeError):
+    except (FileNotFoundError, json.JSONDecodeError):
         return {'users': {}, 'states': {}, 'countries': {}, 'active_requests': {}, 'sh_services': {}}
 
 def save_data(data):
@@ -185,9 +185,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     timestamp = p.get('timestamp', 'غير متوفر')
                     message_text += f"*{i+1}. رقم {phone_number} بسعر {price} روبل في {timestamp}*\n"
             else:
-                message_text += "❌ لا يوجد لديك مشتريات سابقة."
-
-            bot.send_message(chat_id, message_text, parse_mode='Markdown')
         
         elif data == 'back':
             markup = types.InlineKeyboardMarkup()
@@ -301,6 +298,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
                 return
 
+            result = None
             if service == 'viotp':
                 result = viotp_client.buy_number(app_id)
             elif service == 'smsman':
@@ -319,6 +317,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 phone_number = result.get('number', result.get('Phone', 'غير متوفر'))
                 
                 users_data[str(user_id)]['balance'] -= price
+                remaining_balance = users_data[str(user_id)]['balance']
                 
                 users_data[str(user_id)]['purchases'].append({
                     'request_id': request_id,
@@ -338,7 +337,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     'status': 'pending',
                     'service': service,
                     'price': price,
-                    'message_id': message_id # حفظ معرف الرسالة
+                    'message_id': message_id
                 }
                 data_file['active_requests'] = active_requests
                 save_data(data_file)
@@ -346,7 +345,25 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 markup = types.InlineKeyboardMarkup()
                 markup.row(types.InlineKeyboardButton('✅ الحصول على الكود', callback_data=f'get_otp_{service}_{request_id}'))
                 markup.row(types.InlineKeyboardButton('❌ إلغاء الطلب', callback_data=f'cancel_{service}_{request_id}'))
-                bot.send_message(chat_id, f"✅ تم طلب الرقم بنجاح: *{phone_number}*\n\nاضغط على الزر للحصول على الكود أو إلغاء الطلب.", parse_mode='Markdown', reply_markup=markup)
+
+                service_name = 'سيرفر 1' if service == 'viotp' else ('سيرفر 2' if service == 'smsman' else 'سيرفر 3')
+                
+                app_name = "واتساب" if app_id == '2' else "تيليجرام" # يمكنك توسيع هذا ليشمل جميع التطبيقات
+                country_name = country_info.get('name', 'غير معروف')
+                
+                # تنسيق الرسالة الجديدة
+                message_text = (
+                    f"**☎️ - الرقم:** `{phone_number}`\n"
+                    f"**🧿 - التطبيق:** `{app_name}`\n"
+                    f"**📥 - الدولة:** `{country_name}`\n"
+                    f"**🔥 - الأيدي:** `{user_id}`\n"
+                    f"**💸 - السعر:** `Ꝑ{price}`\n"
+                    f"**🤖 - الرصيد المتبقي:** `{remaining_balance}`\n"
+                    f"**🔄 - معرف المشتري:** `@{users_data[str(user_id)].get('username', 'غير متوفر')}`\n"
+                    f"**🎦 - الموقع:** `soper.com`"
+                )
+
+                bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
             else:
                 bot.send_message(chat_id, "❌ فشل طلب الرقم. قد يكون غير متوفر أو أن رصيدك في الخدمة غير كافٍ.")
                 
