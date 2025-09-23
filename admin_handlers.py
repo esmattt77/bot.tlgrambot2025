@@ -258,7 +258,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             markup.row(types.InlineKeyboardButton('كشف رصيد ViOTP', callback_data='get_viotp_balance'))
             markup.row(types.InlineKeyboardButton('كشف رصيد SMS.man', callback_data='get_smsman_balance'))
             markup.row(types.InlineKeyboardButton('كشف رصيد Tiger SMS', callback_data='get_tigersms_balance'))
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="💰 اختر الموقع الذي تريد كشف رصيده:", reply_markup=markup)
         
         elif data == 'get_viotp_balance':
@@ -547,6 +547,76 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                 bot.send_message(chat_id, "❌ لم يتم العثور على هذه الدولة في قائمة الدول المضافة.")
             
             handle_admin_callbacks(call)
+        
+        # --- New Callbacks for Ready Numbers ---
+        elif data == 'ready_numbers_menu':
+            markup = types.InlineKeyboardMarkup()
+            markup.row(types.InlineKeyboardButton('أرقام Tiger SMS 🐅', callback_data='get_ready_tigersms'))
+            markup.row(types.InlineKeyboardButton('أرقام ViOTP 🔑', callback_data='get_ready_viotp'))
+            markup.row(types.InlineKeyboardButton('أرقام SMS.man 📩', callback_data='get_ready_smsman'))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر الموقع لعرض الأرقام الجاهزة منه:", reply_markup=markup)
+            
+        elif data == 'get_ready_tigersms':
+            response = tiger_sms_client.get_ready_numbers()
+            if response.get('success'):
+                numbers = response.get('numbers')
+                if numbers:
+                    message = "📞 الأرقام الجاهزة من Tiger SMS:\n\n"
+                    for number_info in numbers:
+                        message += f"• **الرقم:** `{number_info.get('number')}`\n"
+                        message += f"• **الخدمة:** `{number_info.get('service')}`\n"
+                        message += f"• **السعر:** `{number_info.get('price')}` روبل\n"
+                        message += "-------------------\n"
+                else:
+                    message = "❌ لا توجد أرقام جاهزة حاليًا من Tiger SMS."
+            else:
+                message = f"❌ فشل الاتصال بـ Tiger SMS. {response.get('error', 'خطأ غير معروف')}"
+
+            markup = types.InlineKeyboardMarkup()
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='ready_numbers_menu'))
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+
+        elif data == 'get_ready_viotp':
+            response = viotp_client.get_ready_numbers()
+            if response.get('success'):
+                numbers = response.get('data', {}).get('numbers')
+                if numbers:
+                    message = "📞 الأرقام الجاهزة من ViOTP:\n\n"
+                    for number_info in numbers:
+                        message += f"• **الرقم:** `{number_info.get('number')}`\n"
+                        message += f"• **الخدمة:** `{number_info.get('service')}`\n"
+                        message += f"• **السعر:** `{number_info.get('price')}` روبل\n"
+                        message += "-------------------\n"
+                else:
+                    message = "❌ لا توجد أرقام جاهزة حاليًا من ViOTP."
+            else:
+                message = f"❌ فشل الاتصال بـ ViOTP. {response.get('error', 'خطأ غير معروف')}"
+
+            markup = types.InlineKeyboardMarkup()
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='ready_numbers_menu'))
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+
+        elif data == 'get_ready_smsman':
+            response = smsman_api['get_ready_numbers']()
+            if response.get('status') == 'success':
+                numbers = response.get('data')
+                if numbers:
+                    message = "📞 الأرقام الجاهزة من SMS.man:\n\n"
+                    for number_info in numbers:
+                        message += f"• **الرقم:** `{number_info.get('number')}`\n"
+                        message += f"• **الخدمة:** `{number_info.get('service')}`\n"
+                        message += f"• **السعر:** `{number_info.get('price')}` روبل\n"
+                        message += "-------------------\n"
+                else:
+                    message = "❌ لا توجد أرقام جاهزة حاليًا من SMS.man."
+            else:
+                message = f"❌ فشل الاتصال بـ SMS.man. {response.get('message', 'خطأ غير معروف')}"
+
+            markup = types.InlineKeyboardMarkup()
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='ready_numbers_menu'))
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+
 
     def show_admin_menu(chat_id, message_id=None):
         markup = types.InlineKeyboardMarkup()
@@ -556,10 +626,11 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
         markup.row(types.InlineKeyboardButton('عرض الطلبات النشطة 📞', callback_data='view_active_requests'), types.InlineKeyboardButton('إلغاء جميع الطلبات 🚫', callback_data='cancel_all_requests'))
         markup.row(types.InlineKeyboardButton('إرسال رسالة جماعية 📣', callback_data='broadcast_message'), types.InlineKeyboardButton('الكشف عن أرصدة المواقع 💳', callback_data='show_api_balance_menu'))
         markup.row(types.InlineKeyboardButton('إدارة الرشق 🚀', callback_data='sh_admin_menu'))
+        # New row added here
+        markup.row(types.InlineKeyboardButton('الأرقام الجاهزة 🔰', callback_data='ready_numbers_menu'))
         
         text_message = "أهلاً بك في لوحة تحكم المشرف!"
         if message_id:
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text_message, reply_markup=markup)
         else:
             bot.send_message(chat_id, text_message, reply_markup=markup)
-
