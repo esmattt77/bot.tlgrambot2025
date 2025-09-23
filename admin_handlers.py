@@ -3,12 +3,12 @@ import telebot.apihelper
 import json
 import time
 
-# --- Helper Functions ---
+# --- Helper Functions (Shared) ---
 def load_data():
     try:
         with open('data.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
-            # Ensure all keys exist, including 'ready_numbers'
+            # Ensure all keys exist, including new ones
             if 'sh_services' not in data:
                 data['sh_services'] = {}
             if 'countries' not in data:
@@ -17,7 +17,7 @@ def load_data():
                 data['states'] = {}
             if 'active_requests' not in data:
                 data['active_requests'] = {}
-            if 'ready_numbers' not in data:
+            if 'ready_numbers' not in data:  # New key for ready numbers
                 data['ready_numbers'] = []
             return data
     except (FileNotFoundError, json.JSONDecodeError):
@@ -45,11 +45,11 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
         markup = types.InlineKeyboardMarkup()
         markup.row(types.InlineKeyboardButton('إحصائيات البوت 📊', callback_data='bot_stats'), types.InlineKeyboardButton('إدارة المستخدمين 👥', callback_data='manage_users'))
         markup.row(types.InlineKeyboardButton('إضافة رصيد 💰', callback_data='add_balance'), types.InlineKeyboardButton('خصم رصيد 💸', callback_data='deduct_balance'))
-        markup.row(types.InlineKeyboardButton('إدارة الأرقام الجاهزة 🔢', callback_data='ready_numbers_menu'))
+        markup.row(types.InlineKeyboardButton('إدارة الأرقام الجاهزة 🔢', callback_data='ready_numbers_menu')) # New button
         markup.row(types.InlineKeyboardButton('إضافة دولة 🌐', callback_data='add_country'), types.InlineKeyboardButton('حذف دولة ❌', callback_data='delete_country'))
         markup.row(types.InlineKeyboardButton('عرض الطلبات النشطة 📞', callback_data='view_active_requests'), types.InlineKeyboardButton('إلغاء جميع الطلبات 🚫', callback_data='cancel_all_requests'))
         markup.row(types.InlineKeyboardButton('إرسال رسالة جماعية 📣', callback_data='broadcast_message'), types.InlineKeyboardButton('الكشف عن أرصدة المواقع 💳', callback_data='show_api_balance_menu'))
-        markup.row(types.InlineKeyboardButton('إدارة الرشق 🚀', callback_data='sh_admin_menu'))
+        markup.row(types.InlineKeyboardButton('إدارة الرشق 🚀', callback_data='sh_admin_menu')) # New button
         
         text_message = "أهلاً بك في لوحة تحكم المشرف!"
         if message_id:
@@ -203,27 +203,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                 del data_file['states'][str(user_id)]
                 save_data(data_file)
 
-        elif state and state.get('step') == 'waiting_for_sh_service_name':
-            service_name = message.text
-            data_file['states'][str(user_id)]['service_name'] = service_name
-            data_file['states'][str(user_id)]['step'] = 'waiting_for_sh_service_price'
-            save_data(data_file)
-            bot.send_message(chat_id, "أرسل **سعر الخدمة** بالروبل.")
-
-        elif state and state.get('step') == 'waiting_for_sh_service_price':
-            try:
-                service_price = int(message.text)
-                service_name = state.get('service_name')
-                data_file = load_data()
-                data_file['sh_services'][service_name] = service_price
-                save_data(data_file)
-                bot.send_message(chat_id, f"✅ تم إضافة خدمة الرشق `{service_name}` بسعر `{service_price}` روبل بنجاح!")
-                del data_file['states'][str(user_id)]
-                save_data(data_file)
-            except ValueError:
-                bot.send_message(chat_id, "❌ السعر غير صحيح. يرجى إدخال رقم.")
-        
-        # --- Ready Numbers state handlers ---
+        # --- New Ready Numbers State Handler ---
         elif state and state.get('step') == 'waiting_for_ready_number_details':
             try:
                 lines = message.text.split('\n')
@@ -256,6 +236,27 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                 save_data(data_file)
             except (ValueError, IndexError):
                 bot.send_message(chat_id, "❌ تنسيق غير صحيح. يرجى استخدام النموذج المحدد: `الرقم: ...\nالتطبيق: ...\nالسعر: ...`")
+
+        # --- New SH State Handler ---
+        elif state and state.get('step') == 'waiting_for_sh_service_name':
+            service_name = message.text
+            data_file['states'][str(user_id)]['service_name'] = service_name
+            data_file['states'][str(user_id)]['step'] = 'waiting_for_sh_service_price'
+            save_data(data_file)
+            bot.send_message(chat_id, "أرسل **سعر الخدمة** بالروبل.")
+
+        elif state and state.get('step') == 'waiting_for_sh_service_price':
+            try:
+                service_price = int(message.text)
+                service_name = state.get('service_name')
+                data_file = load_data()
+                data_file['sh_services'][service_name] = service_price
+                save_data(data_file)
+                bot.send_message(chat_id, f"✅ تم إضافة خدمة الرشق `{service_name}` بسعر `{service_price}` روبل بنجاح!")
+                del data_file['states'][str(user_id)]
+                save_data(data_file)
+            except ValueError:
+                bot.send_message(chat_id, "❌ السعر غير صحيح. يرجى إدخال رقم.")
 
     @bot.callback_query_handler(func=lambda call: call.from_user.id == DEVELOPER_ID)
     def handle_admin_callbacks(call):
@@ -316,7 +317,6 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                 save_data(data_file)
                 bot.send_message(chat_id, f"✅ تم حذف الرقم `{deleted_number.get('number', 'غير متوفر')}` بنجاح.")
                 try:
-                    # Refresh the menu
                     call.data = 'delete_ready_number'
                     handle_admin_callbacks(call)
                 except Exception:
@@ -324,7 +324,55 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             else:
                 bot.send_message(chat_id, "❌ الرقم المحدد غير موجود.")
         
-        # --- Existing callbacks ---
+        # --- SH Callbacks ---
+        elif data == 'sh_admin_menu':
+            markup = types.InlineKeyboardMarkup()
+            markup.row(types.InlineKeyboardButton('➕ إضافة خدمة رشق', callback_data='add_sh_service'))
+            markup.row(types.InlineKeyboardButton('➖ حذف خدمة رشق', callback_data='delete_sh_service'))
+            markup.row(types.InlineKeyboardButton('عرض الخدمات 📄', callback_data='view_sh_services'))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 اختر الإجراء لإدارة خدمات الرشق:", reply_markup=markup)
+
+        elif data == 'add_sh_service':
+            data_file['states'][str(user_id)] = {'step': 'waiting_for_sh_service_name'}
+            save_data(data_file)
+            bot.send_message(chat_id, "أرسل **اسم خدمة الرشق** (مثلاً: متابعين انستقرام).")
+
+        elif data == 'delete_sh_service':
+            markup = types.InlineKeyboardMarkup()
+            sh_services = data_file.get('sh_services', {})
+            if not sh_services:
+                bot.send_message(chat_id, "❌ لا توجد خدمات رشق لحذفها.")
+                return
+            for name, price in sh_services.items():
+                markup.add(types.InlineKeyboardButton(f"❌ {name} ({price} روبل)", callback_data=f'confirm_delete_sh_{name}'))
+            markup.add(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر الخدمة التي تريد حذفها:", reply_markup=markup)
+        
+        elif data.startswith('confirm_delete_sh_'):
+            service_name_to_delete = data.split('_', 2)[-1]
+            data_file = load_data()
+            if service_name_to_delete in data_file.get('sh_services', {}):
+                del data_file['sh_services'][service_name_to_delete]
+                save_data(data_file)
+                bot.send_message(chat_id, f"✅ تم حذف خدمة `{service_name_to_delete}` بنجاح.")
+            else:
+                bot.send_message(chat_id, "❌ الخدمة غير موجودة.")
+            handle_admin_callbacks(call)
+        
+        elif data == 'view_sh_services':
+            sh_services = data_file.get('sh_services', {})
+            if not sh_services:
+                message = "❌ لا توجد خدمات رشق متاحة حاليًا."
+            else:
+                message = "📄 **خدمات الرشق المتاحة:**\n\n"
+                for name, price in sh_services.items():
+                    message += f"• **{name}**: `{price}` روبل\n"
+            markup = types.InlineKeyboardMarkup()
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+        
+        # --- Existing Callbacks ---
         elif data == 'add_balance':
             data_file['states'][str(user_id)] = {'step': 'waiting_for_add_coin_id'}
             save_data(data_file)
@@ -444,11 +492,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                     if api_countries_list and api_countries_list.get('success'):
                         for item in api_countries_list.get('countries', []):
                             api_countries[item['country_code']] = {'name': item['country_name'], 'price': item['price']}
-
             except Exception as e:
                 bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}')
                 return
-
+            
             if not api_countries:
                 bot.send_message(chat_id, '❌ لا توجد دول متاحة من واجهة API لهذه الخدمة حاليًا.')
                 return
@@ -534,53 +581,6 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             data_file['states'][str(user_id)] = {'step': 'waiting_for_send_message_to_user_id'}
             save_data(data_file)
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="✉️ أرسل **آيدي المستخدم** الذي تريد إرسال رسالة إليه.")
-
-        elif data == 'sh_admin_menu':
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('➕ إضافة خدمة رشق', callback_data='add_sh_service'))
-            markup.row(types.InlineKeyboardButton('➖ حذف خدمة رشق', callback_data='delete_sh_service'))
-            markup.row(types.InlineKeyboardButton('عرض الخدمات 📄', callback_data='view_sh_services'))
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 اختر الإجراء لإدارة خدمات الرشق:", reply_markup=markup)
-
-        elif data == 'add_sh_service':
-            data_file['states'][str(user_id)] = {'step': 'waiting_for_sh_service_name'}
-            save_data(data_file)
-            bot.send_message(chat_id, "أرسل **اسم خدمة الرشق** (مثلاً: متابعين انستقرام).")
-
-        elif data == 'delete_sh_service':
-            markup = types.InlineKeyboardMarkup()
-            sh_services = data_file.get('sh_services', {})
-            if not sh_services:
-                bot.send_message(chat_id, "❌ لا توجد خدمات رشق لحذفها.")
-                return
-            for name, price in sh_services.items():
-                markup.add(types.InlineKeyboardButton(f"❌ {name} ({price} روبل)", callback_data=f'confirm_delete_sh_{name}'))
-            markup.add(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر الخدمة التي تريد حذفها:", reply_markup=markup)
-        
-        elif data.startswith('confirm_delete_sh_'):
-            service_name_to_delete = data.split('_', 2)[-1]
-            data_file = load_data()
-            if service_name_to_delete in data_file.get('sh_services', {}):
-                del data_file['sh_services'][service_name_to_delete]
-                save_data(data_file)
-                bot.send_message(chat_id, f"✅ تم حذف خدمة `{service_name_to_delete}` بنجاح.")
-            else:
-                bot.send_message(chat_id, "❌ الخدمة غير موجودة.")
-            handle_admin_callbacks(call)
-        
-        elif data == 'view_sh_services':
-            sh_services = data_file.get('sh_services', {})
-            if not sh_services:
-                message = "❌ لا توجد خدمات رشق متاحة حاليًا."
-            else:
-                message = "📄 **خدمات الرشق المتاحة:**\n\n"
-                for name, price in sh_services.items():
-                    message += f"• **{name}**: `{price}` روبل\n"
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
         
         elif data.startswith('delete_country_service_'):
             service = data.split('_')[3]
@@ -648,3 +648,4 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                 bot.send_message(chat_id, "❌ لم يتم العثور على هذه الدولة في قائمة الدول المضافة.")
             
             handle_admin_callbacks(call)
+
