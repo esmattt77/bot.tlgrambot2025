@@ -1,6 +1,13 @@
 from telebot import types
 import json
 import time
+import logging
+
+# تهيئة نظام التسجيل
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # --- Helper Functions (Shared) ---
 def load_data():
@@ -301,8 +308,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             elif service == 'tigersms':
                 result = tiger_sms_client.get_number(app_id, country_code)
 
-            # 🟢 سطر الطباعة المضاف هنا
-            print(f"Response from {service}:", result)
+            # 🟢 سطر الطباعة المضاف هنا - يستخدم logging
+            logging.info(f"Response from {service}: {result}")
 
             if result and result.get('success'):
                 request_id = result.get('id')
