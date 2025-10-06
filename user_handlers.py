@@ -14,7 +14,7 @@ logging.basicConfig(
 
 # 💡 --- MongoDB IMPORTS ADDED ---
 # يجب أن يكون ملف db_manager.py موجوداً في نفس المجلد
-from .db_manager import (
+from db_manager import (
     get_user_doc, # للحصول على جميع معلومات المستخدم
     update_user_balance, # لتحديث الرصيد مباشرة
     register_user, # دالة مساعدة لتسجيل/تحديث بيانات المستخدم
