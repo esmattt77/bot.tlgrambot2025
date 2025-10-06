@@ -9,58 +9,18 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# --- Helper Functions (Shared) ---
-def load_data():
-    try:
-        with open('data.json', 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            # إضافة المفاتيح المفقودة لضمان عدم حدوث أخطاء
-            if 'sh_services' not in data:
-                data['sh_services'] = {}
-            if 'countries' not in data:
-                data['countries'] = {}
-            if 'states' not in data:
-                data['states'] = {}
-            if 'active_requests' not in data:
-                data['active_requests'] = {}
-            if 'ready_numbers' not in data:
-                data['ready_numbers'] = []
-            return data
-    except (FileNotFoundE, json.JSONDecodeError):
-        return {'users': {}, 'states': {}, 'countries': {}, 'active_requests': {}, 'sh_services': {}, 'ready_numbers': []}
+# ❌ --- JSON Helper Functions REMOVED ---
+# تم حذف دوال load_data, save_data, load_users, save_users, register_user القديمة
 
-def save_data(data):
-    with open('data.json', 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
-
-def load_users():
-    try:
-        with open('users.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-def save_users(users):
-    with open('users.json', 'w', encoding='utf-8') as f:
-        json.dump(users, f, indent=4, ensure_ascii=False)
-
-def register_user(user_id, first_name, username):
-    users_data = load_users()
-    user_id_str = str(user_id)
-    if user_id_str not in users_data:
-        users_data[user_id_str] = {
-            'id': user_id,
-            'first_name': first_name,
-            'username': username,
-            'balance': 0,
-            'join_date': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime()),
-            'purchases': []
-        }
-    else:
-        users_data[user_id_str]['first_name'] = first_name
-        users_data[user_id_str]['username'] = username
-    save_users(users_data)
-
+# 💡 --- MongoDB IMPORTS ADDED ---
+# يجب أن يكون ملف db_manager.py موجوداً في نفس المجلد
+from .db_manager import (
+    get_user_doc, # للحصول على جميع معلومات المستخدم
+    update_user_balance, # لتحديث الرصيد مباشرة
+    register_user, # دالة مساعدة لتسجيل/تحديث بيانات المستخدم
+    get_bot_data, # لتحميل بيانات البوت (active_requests, sh_services, countries)
+    save_bot_data # لحفظ بيانات البوت
+)
 
 def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
 
@@ -71,6 +31,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         first_name = message.from_user.first_name
         username = message.from_user.username
         
+        # 💡 تسجيل/تحديث بيانات المستخدم في MongoDB
         register_user(user_id, first_name, username)
 
         if message.text in ['/start', 'start/', 'بدء/']:
@@ -78,8 +39,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             return
 
         elif message.text in ['/balance', 'رصيدي']:
-            users_data = load_users()
-            balance = users_data.get(str(user_id), {}).get('balance', 0)
+            # 💡 جلب معلومات المستخدم من MongoDB
+            user_doc = get_user_doc(user_id)
+            balance = user_doc.get('balance', 0) if user_doc else 0
             bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
     
     def show_main_menu(chat_id, message_id=None):
@@ -112,8 +74,10 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         message_id = call.message.message_id
         data = call.data
         
-        data_file = load_data()
-        users_data = load_users()
+        # 💡 التحميل من MongoDB
+        data_file = get_bot_data()
+        user_doc = get_user_doc(user_id)
+        user_balance = user_doc.get('balance', 0) if user_doc else 0
         
         if data == 'back':
             show_main_menu(chat_id, message_id)
@@ -137,16 +101,33 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         elif data.startswith('buy_sh_'):
             service_name = data.split('_', 2)[-1]
             service_price = data_file.get('sh_services', {}).get(service_name)
-            user_balance = users_data.get(str(user_id), {}).get('balance', 0)
             
             if user_balance < service_price:
                 bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {service_price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
                 return
 
-            users_data[str(user_id)]['balance'] -= service_price
-            save_users(users_data)
+            # 💡 خصم الرصيد من MongoDB مباشرة
+            update_user_balance(user_id, -service_price, is_increment=True)
             
-            bot.send_message(chat_id, f"✅ تم شراء خدمة `{service_name}` بنجاح! سيتم معالجة طلبك قريباً.")
+            # 💡 تحديث سجل المشتريات (يجب أن يتم تحديث دوال db_manager لإضافة سجل شراء)
+            # بما أننا لا نملك دوال Purchases، سنفترض تحديثها عبر دالة register_user
+            register_user(
+                user_id, 
+                user_doc.get('first_name'), 
+                user_doc.get('username'), 
+                new_purchase={
+                    'service_name': service_name,
+                    'price': service_price,
+                    'status': 'sh_purchased',
+                    'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+                }
+            )
+
+            # 💡 يجب إعادة جلب الرصيد المتبقي
+            new_user_doc = get_user_doc(user_id)
+            remaining_balance = new_user_doc.get('balance', 0)
+
+            bot.send_message(chat_id, f"✅ تم شراء خدمة `{service_name}` بنجاح! سيتم معالجة طلبك قريباً.\n*رصيدك المتبقي:* `{remaining_balance}` روبل.", parse_mode='Markdown')
             return
 
         elif data == 'Wo':
@@ -166,7 +147,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             return
 
         elif data == 'ready':
-            data_file = load_data()
             ready_numbers = data_file.get('ready_numbers', [])
             if not ready_numbers:
                 bot.send_message(chat_id, "❌ لا توجد أرقام جاهزة متاحة حالياً.")
@@ -179,40 +159,48 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🔰 *الأرقام الجاهزة المتاحة حالياً:*", parse_mode='Markdown', reply_markup=markup)
 
         elif data.startswith('buy_ready_'):
-            data_file = load_data()
-            users_data = load_users()
             index_to_buy = int(data.split('_')[-1])
             ready_numbers = data_file.get('ready_numbers', [])
 
             if 0 <= index_to_buy < len(ready_numbers):
                 number_data = ready_numbers[index_to_buy]
                 price = number_data.get('price', 0)
-                user_balance = users_data.get(str(user_id), {}).get('balance', 0)
 
                 if user_balance < price:
                     bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
                     return
                 
-                # خصم الرصيد وحفظ العملية
-                users_data[str(user_id)]['balance'] -= price
-                users_data[str(user_id)]['purchases'].append({
-                    'phone_number': number_data.get('number'),
-                    'app': number_data.get('app'),
-                    'price': price,
-                    'status': 'ready_number',
-                    'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
-                })
-                save_users(users_data)
+                # 💡 خصم الرصيد من MongoDB مباشرة
+                update_user_balance(user_id, -price, is_increment=True)
 
-                # حذف الرقم من قائمة الأرقام الجاهزة
+                # 💡 تحديث سجل المشتريات (يجب أن يتم تحديث دوال db_manager لإضافة سجل شراء)
+                register_user(
+                    user_id,
+                    user_doc.get('first_name'), 
+                    user_doc.get('username'), 
+                    new_purchase={
+                        'phone_number': number_data.get('number'),
+                        'app': number_data.get('app'),
+                        'price': price,
+                        'status': 'ready_number_purchased',
+                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+                    }
+                )
+
+                # حذف الرقم من قائمة الأرقام الجاهزة في بيانات البوت
                 del ready_numbers[index_to_buy]
                 data_file['ready_numbers'] = ready_numbers
-                save_data(data_file)
+                # 💡 حفظ بيانات البوت في MongoDB
+                save_bot_data(data_file)
                 
-                bot.send_message(chat_id, f"✅ تم شراء الرقم `{number_data.get('number')}` بنجاح.\n\nالرصيد المتبقي: `{users_data[str(user_id)]['balance']}` روبل.")
+                # 💡 إعادة جلب الرصيد المتبقي
+                new_user_doc = get_user_doc(user_id)
+                remaining_balance = new_user_doc.get('balance', 0)
+                
+                bot.send_message(chat_id, f"✅ تم شراء الرقم `{number_data.get('number')}` بنجاح.\n\nالرصيد المتبقي: `{remaining_balance}` روبل.")
                 
                 # إرسال إشعار للمشرف
-                bot.send_message(DEVELOPER_ID, f"🔔 *تم بيع رقم جاهز!*\n\n*الرقم:* `{number_data.get('number')}`\n*التطبيق:* `{number_data.get('app')}`\n*السعر:* `{price}` روبل\n*للمستخدم:* `@{users_data[str(user_id)].get('username', 'غير متوفر')}`", parse_mode='Markdown')
+                bot.send_message(DEVELOPER_ID, f"🔔 *تم بيع رقم جاهز!*\n\n*الرقم:* `{number_data.get('number')}`\n*التطبيق:* `{number_data.get('app')}`\n*السعر:* `{price}` روبل\n*للمستخدم:* `@{user_doc.get('username', 'غير متوفر')}`", parse_mode='Markdown')
             else:
                 bot.send_message(chat_id, "❌ حدث خطأ. الرقم المحدد غير متوفر.")
 
@@ -220,10 +208,10 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             bot.send_message(chat_id, "👨‍💻 *نظام الوكلاء قيد المراجعة. إذا كنت مهتماً، يمكنك التواصل مع المشرف.*", parse_mode='Markdown')
             return
         elif data == 'MyAccount':
-            user_info = users_data.get(str(user_id), {})
+            user_info = get_user_doc(user_id)
             message_text = (
                 f"⚙️ **إعدادات حسابك:**\n"
-                f"**الآيدي:** `{user_info.get('id', 'غير متوفر')}`\n"
+                f"**الآيدي:** `{user_info.get('_id', 'غير متوفر')}`\n"
                 f"**الاسم:** `{user_info.get('first_name', 'غير متوفر')}`\n"
                 f"**اسم المستخدم:** `@{user_info.get('username', 'غير متوفر')}`\n"
                 f"**الرصيد:** `{user_info.get('balance', 0)}` روبل\n"
@@ -243,18 +231,21 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="📞 *اختر الخدمة التي تريد الشراء منها:*", parse_mode='Markdown', reply_markup=markup)
         
         elif data == 'Record':
-            user_info = users_data.get(str(user_id), {})
+            user_info = get_user_doc(user_id)
             balance = user_info.get('balance', 0)
+            # 💡 نستخدم الحقل 'purchases' من مستند MongoDB للمستخدم
             purchases = user_info.get('purchases', [])
             
             message_text = f"💰 رصيدك الحالي هو: *{balance}* روبل.\n\n"
             if purchases:
                 message_text += "📝 **سجل مشترياتك الأخيرة:**\n"
+                # نعرض آخر 5 مشتريات
                 for i, p in enumerate(purchases[-5:]):
-                    phone_number = p.get('phone_number', 'غير متوفر')
+                    phone_number = p.get('phone_number', p.get('service_name', 'غير متوفر')) # عرض الرقم أو اسم الخدمة
                     price = p.get('price', 0)
                     timestamp = p.get('timestamp', 'غير متوفر')
-                    message_text += f"*{i+1}. رقم {phone_number} بسعر {price} روبل في {timestamp}*\n"
+                    # تم تعديل النص ليناسب سجل الشراء العام (أرقام + رشق)
+                    message_text += f"*{i+1}. شراء {phone_number} بسعر {price} روبل في {timestamp}*\n"
             else:
                 message_text += "❌ لا يوجد سجل مشتريات حتى الآن."
             
@@ -263,6 +254,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         elif data.startswith('service_'):
             service = data.split('_')[1]
             markup = types.InlineKeyboardMarkup()
+            # ... (باقي أزرار التطبيقات كما هي)
             if service == 'viotp':
                 markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2'))
                 markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3'))
@@ -306,7 +298,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 markup.row(types.InlineKeyboardButton('⁞ أوكي 🌟', callback_data=f'show_countries_{service}_ok'))
                 markup.row(types.InlineKeyboardButton('⁞ لاين 📲', callback_data=f'show_countries_{service}_li'))
                 markup.row(types.InlineKeyboardButton('⁞ أمازون 🛒', callback_data=f'show_countries_{service}_am'))
-            
+
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
             server_name = 'سيرفر 1' if service == 'viotp' else ('سيرفر 2' if service == 'smsman' else 'سيرفر 3')
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
@@ -316,7 +308,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             service, app_id = parts[2], parts[3]
             page = int(parts[5]) if len(parts) > 5 else 1
             
-            local_countries = load_data().get('countries', {}).get(service, {}).get(app_id, {})
+            # 💡 جلب الدول من بيانات البوت المحفوظة في MongoDB
+            local_countries = data_file.get('countries', {}).get(service, {}).get(app_id, {})
             
             if not local_countries:
                 bot.send_message(chat_id, '❌ لا توجد دول متاحة لهذا التطبيق حاليًا.')
@@ -349,12 +342,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             parts = data.split('_')
             service, app_id, country_code = parts[1], parts[2], parts[3]
             
-            data_file = load_data()
-            users_data = load_users()
+            # 💡 جلب البيانات من MongoDB
             country_info = data_file.get('countries', {}).get(service, {}).get(app_id, {}).get(country_code, {})
             price = country_info.get('price', 0)
-            
-            user_balance = users_data.get(str(user_id), {}).get('balance', 0)
             
             if user_balance < price:
                 bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
@@ -378,19 +368,26 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 request_id = result.get('id')
                 phone_number = result.get('number', result.get('Phone', 'غير متوفر'))
                 
-                users_data[str(user_id)]['balance'] -= price
-                remaining_balance = users_data[str(user_id)]['balance']
+                # 💡 خصم الرصيد من MongoDB مباشرة
+                update_user_balance(user_id, -price, is_increment=True)
+                # 💡 يجب إعادة جلب الرصيد المتبقي
+                new_user_doc = get_user_doc(user_id)
+                remaining_balance = new_user_doc.get('balance', 0)
                 
-                users_data[str(user_id)]['purchases'].append({
-                    'request_id': request_id,
-                    'phone_number': phone_number,
-                    'service': service,
-                    'price': price,
-                    'status': 'pending',
-                    'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
-                })
-                
-                save_users(users_data)
+                # 💡 تحديث سجل المشتريات (يجب أن يتم تحديث دوال db_manager لإضافة سجل شراء)
+                register_user(
+                    user_id, 
+                    user_doc.get('first_name'), 
+                    user_doc.get('username'), 
+                    new_purchase={
+                        'request_id': request_id,
+                        'phone_number': phone_number,
+                        'service': service,
+                        'price': price,
+                        'status': 'pending',
+                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+                    }
+                )
                 
                 active_requests = data_file.get('active_requests', {})
                 active_requests[request_id] = {
@@ -399,10 +396,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     'status': 'pending',
                     'service': service,
                     'price': price,
-                    'message_id': message_id
+                    'message_id': call.message.message_id # نستخدم message_id من الـ callback
                 }
                 data_file['active_requests'] = active_requests
-                save_data(data_file)
+                # 💡 حفظ بيانات البوت في MongoDB
+                save_bot_data(data_file)
                 
                 markup = types.InlineKeyboardMarkup()
                 markup.row(types.InlineKeyboardButton('✅ الحصول على الكود', callback_data=f'get_otp_{service}_{request_id}'))
@@ -410,7 +408,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
 
                 service_name = 'سيرفر 1' if service == 'viotp' else ('سيرفر 2' if service == 'smsman' else 'سيرفر 3')
                 
-                app_name = "واتساب" if app_id == '2' else "تيليجرام" # يمكنك توسيع هذا ليشمل جميع التطبيقات
+                app_name = country_info.get('name', 'غير معروف')
                 country_name = country_info.get('name', 'غير معروف')
                 
                 message_text = (
@@ -420,7 +418,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     f"**🔥 - الأيدي:** `{user_id}`\n"
                     f"**💸 - السعر:** `Ꝑ{price}`\n"
                     f"**🤖 - الرصيد المتبقي:** `{remaining_balance}`\n"
-                    f"**🔄 - معرف المشتري:** `@{users_data[str(user_id)].get('username', 'غير متوفر')}`\n"
+                    f"**🔄 - معرف المشتري:** `@{user_doc.get('username', 'غير متوفر')}`\n"
                     f"**🎦 - الموقع:** `soper.com`"
                 )
 
@@ -442,21 +440,26 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
 
             if result and result.get('success') and result.get('code'):
                 otp_code = result.get('code')
-                data_file = load_data()
-                users_data = load_users()
+                data_file = get_bot_data()
                 active_requests = data_file.get('active_requests', {})
                 
                 if request_id in active_requests:
                     phone_number = active_requests[request_id]['phone_number']
                     del active_requests[request_id]
                     data_file['active_requests'] = active_requests
-                    save_data(data_file)
+                    # 💡 حفظ بيانات البوت في MongoDB
+                    save_bot_data(data_file)
 
-                    for purchase in users_data.get(str(user_id), {}).get('purchases', []):
-                        if purchase.get('request_id') == request_id:
-                            purchase['status'] = 'completed'
-                            break
-                    save_users(users_data)
+                    # 💡 تحديث حالة الطلب في سجل المشتريات إلى "completed"
+                    register_user(
+                        user_id, 
+                        user_doc.get('first_name'), 
+                        user_doc.get('username'),
+                        update_purchase_status={
+                            'request_id': request_id, 
+                            'status': 'completed'
+                        }
+                    )
 
                     bot.send_message(chat_id, f"✅ *رمزك هو: {otp_code}*\n\nالرقم: *{phone_number}*", parse_mode='Markdown')
                 else:
@@ -477,8 +480,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 result = tiger_sms_client.cancel_request(request_id)
             
             if result and result.get('success'):
-                data_file = load_data()
-                users_data = load_users()
+                data_file = get_bot_data()
                 active_requests = data_file.get('active_requests', {})
                 
                 if request_id in active_requests:
@@ -486,20 +488,22 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     user_id_from_request = request_info['user_id']
                     price_to_restore = request_info['price']
                     
-                    user_id_str = str(user_id_from_request)
-                    if user_id_str in users_data:
-                        users_data[user_id_str]['balance'] += price_to_restore
-                        
-                        users_data[user_id_str]['purchases'] = [
-                            p for p in users_data[user_id_str]['purchases'] 
-                            if p.get('request_id') != request_id
-                        ]
-                        
-                        save_users(users_data)
+                    # 💡 استرجاع الرصيد للمستخدم مباشرة
+                    update_user_balance(user_id_from_request, price_to_restore, is_increment=True)
+                    
+                    # 💡 حذف سجل الطلب من قائمة المشتريات
+                    register_user(
+                        user_id_from_request, 
+                        user_doc.get('first_name'), 
+                        user_doc.get('username'),
+                        delete_purchase_id=request_id
+                    )
                     
                     del active_requests[request_id]
                     data_file['active_requests'] = active_requests
-                    save_data(data_file)
+                    # 💡 حفظ بيانات البوت في MongoDB
+                    save_bot_data(data_file)
+                    
                 bot.send_message(chat_id, "✅ تم إلغاء الطلب بنجاح. سيتم استرجاع رصيدك.")
             else:
                 bot.send_message(chat_id, "❌ فشل إلغاء الطلب. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.")
