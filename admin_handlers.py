@@ -8,7 +8,7 @@ import time
 
 # 💡 --- MongoDB IMPORTS ADDED ---
 # يجب أن يكون ملف db_manager.py موجوداً في نفس المجلد
-from .db_manager import (
+from db_manager import (
     get_user_balance, 
     update_user_balance, 
     get_bot_data, 
