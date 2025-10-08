@@ -10,14 +10,14 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# 💡 --- MongoDB IMPORTS ADDED ---
+# 💡 --- MongoDB IMPORTS ---
 # يجب أن يكون ملف db_manager.py موجوداً في نفس المجلد
 from db_manager import (
-    get_user_doc, # للحصول على جميع معلومات المستخدم
-    update_user_balance, # لتحديث الرصيد مباشرة
-    register_user, # دالة مساعدة لتسجيل/تحديث بيانات المستخدم
-    get_bot_data, # لتحميل بيانات البوت (active_requests, sh_services, countries)
-    save_bot_data # لحفظ بيانات البوت
+    get_user_doc,
+    update_user_balance,
+    register_user,
+    get_bot_data,
+    save_bot_data
 )
 
 def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
@@ -107,8 +107,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             # 💡 خصم الرصيد من MongoDB مباشرة
             update_user_balance(user_id, -service_price, is_increment=True)
             
-            # 💡 تحديث سجل المشتريات (يجب أن يتم تحديث دوال db_manager لإضافة سجل شراء)
-            # بما أننا لا نملك دوال Purchases، سنفترض تحديثها عبر دالة register_user
+            # 💡 تحديث سجل المشتريات
             register_user(
                 user_id, 
                 user_doc.get('first_name'), 
@@ -171,7 +170,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 # 💡 خصم الرصيد من MongoDB مباشرة
                 update_user_balance(user_id, -price, is_increment=True)
 
-                # 💡 تحديث سجل المشتريات (يجب أن يتم تحديث دوال db_manager لإضافة سجل شراء)
+                # 💡 تحديث سجل المشتريات
                 register_user(
                     user_id,
                     user_doc.get('first_name'), 
@@ -483,39 +482,60 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             parts = data.split('_')
             service, request_id = parts[1], parts[2]
             
+            # 💡 [تعديل] الرد الفوري على ضغطة الزر
+            bot.answer_callback_query(call.id, "جاري معالجة طلب الإلغاء...")
+            
             result = None
             if service == 'viotp':
                 result = viotp_client.cancel_request(request_id)
             elif service == 'smsman':
                 result = smsman_api['cancel_smsman_request'](request_id)
+                # 💡 توحيد استجابة smsman (التأكد من أن حالة 'success' موجودة)
+                if result and result.get('status') == 'success':
+                    result['success'] = True
             elif service == 'tigersms':
                 result = tiger_sms_client.cancel_request(request_id)
             
+            # 💡 التحقق من نجاح عملية الإلغاء في API الموقع
             if result and result.get('success'):
                 data_file = get_bot_data()
                 active_requests = data_file.get('active_requests', {})
                 
                 if request_id in active_requests:
-                    request_info = active_requests[request_id]
-                    user_id_from_request = request_info['user_id']
-                    price_to_restore = request_info['price']
-                    
-                    # 💡 استرجاع الرصيد للمستخدم مباشرة
-                    update_user_balance(user_id_from_request, price_to_restore, is_increment=True)
-                    
-                    # 💡 حذف سجل الطلب من قائمة المشتريات
-                    register_user(
-                        user_id_from_request, 
-                        user_doc.get('first_name'), 
-                        user_doc.get('username'),
-                        delete_purchase_id=request_id
-                    )
-                    
-                    del active_requests[request_id]
-                    data_file['active_requests'] = active_requests
-                    # 💡 حفظ بيانات البوت في MongoDB
-                    save_bot_data(data_file)
-                    
-                bot.send_message(chat_id, "✅ تم إلغاء الطلب بنجاح. سيتم استرجاع رصيدك.")
+                    try:
+                        # 💡 [تحسين] استخدام try/except لتأمين عمليات MongoDB
+                        request_info = active_requests[request_id]
+                        user_id_from_request = request_info['user_id']
+                        price_to_restore = request_info['price']
+                        
+                        # 1. استرجاع الرصيد للمستخدم مباشرة
+                        update_user_balance(user_id_from_request, price_to_restore, is_increment=True)
+                        
+                        # 2. حذف سجل الطلب من قائمة المشتريات (أو تحديث حالته إلى 'cancelled')
+                        register_user(
+                            user_id_from_request, 
+                            user_doc.get('first_name'), 
+                            user_doc.get('username'),
+                            delete_purchase_id=request_id
+                        )
+                        
+                        # 3. حذف الطلب من الطلبات النشطة
+                        del active_requests[request_id]
+                        data_file['active_requests'] = active_requests
+                        save_bot_data(data_file)
+                        
+                        # 4. إرسال رسالة النجاح
+                        bot.send_message(chat_id, f"✅ **تم إلغاء الطلب بنجاح!** تم استرجاع مبلغ *{price_to_restore}* روبل إلى رصيدك.", parse_mode='Markdown')
+                        
+                    except Exception as e:
+                        # 💡 في حال فشل أي عملية MongoDB، نسجل الخطأ ونبلغ المستخدم
+                        logging.error(f"MongoDB Error during CANCEL/REFUND for Req ID {request_id}: {e}")
+                        bot.send_message(chat_id, f"⚠️ تم إلغاء طلبك في الموقع، ولكن حدث **خطأ أثناء استرجاع رصيدك**. يرجى التواصل مع الدعم (@{ESM7AT}) وذكر آيدي الطلب: `{request_id}`.", parse_mode='Markdown')
+                        
+                else:
+                    # هذه الحالة تحدث إذا تم حذف الطلب من active_requests مسبقاً
+                    bot.send_message(chat_id, "❌ حدث خطأ: لا يوجد طلب نشط بهذا الآيدي في البوت. يرجى مراجعة رصيدك وسجل مشترياتك.", parse_mode='Markdown')
+
             else:
-                bot.send_message(chat_id, "❌ فشل إلغاء الطلب. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.")
+                # هذا الرد في حالة فشل الاتصال/الإلغاء في API الموقع
+                bot.send_message(chat_id, "❌ فشل إلغاء الطلب في الموقع. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.")
