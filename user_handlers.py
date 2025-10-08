@@ -21,6 +21,18 @@ from db_manager import (
 )
 
 def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
+    
+    # 💡 دالة مساعدة لجلب معلومات طلب الإلغاء من سجل المشتريات
+    def get_cancellable_request_info(user_doc, request_id):
+        purchases = user_doc.get('purchases', [])
+        for p in purchases:
+            # يجب أن يكون الطلب معلقاً (pending)
+            if p.get('request_id') == request_id and p.get('status') == 'pending':
+                return {
+                    'user_id': user_doc.get('_id'),
+                    'price_to_restore': p.get('price', 0)
+                }
+        return None
 
     @bot.message_handler(func=lambda message: message.from_user.id != DEVELOPER_ID)
     def handle_user_messages(message):
@@ -53,7 +65,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
         markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
         
-        text = f"☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*"
+        # 💡 النص الترحيبي الجديد المطلوب
+        text = f"مرحباً بك في *بوت الأسطورة لخدمات الأرقام الافتراضية*.\n\n☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*"
         
         if message_id:
             try:
@@ -126,7 +139,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
 
             bot.send_message(chat_id, f"✅ تم شراء خدمة `{service_name}` بنجاح! سيتم معالجة طلبك قريباً.\n*رصيدك المتبقي:* `{remaining_balance}` روبل.", parse_mode='Markdown')
             return
-
+        # ... (باقي وظائف القائمة الرئيسية)
         elif data == 'Wo':
             bot.send_message(chat_id, "🛍 *لا توجد عروض خاصة متاحة حالياً. تابعنا للحصول على التحديثات!*", parse_mode='Markdown')
             return
@@ -230,19 +243,17 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         elif data == 'Record':
             user_info = get_user_doc(user_id)
             balance = user_info.get('balance', 0)
-            # 💡 نستخدم الحقل 'purchases' من مستند MongoDB للمستخدم
             purchases = user_info.get('purchases', [])
             
             message_text = f"💰 رصيدك الحالي هو: *{balance}* روبل.\n\n"
             if purchases:
                 message_text += "📝 **سجل مشترياتك الأخيرة:**\n"
-                # نعرض آخر 5 مشتريات
                 for i, p in enumerate(purchases[-5:]):
-                    phone_number = p.get('phone_number', p.get('service_name', 'غير متوفر')) # عرض الرقم أو اسم الخدمة
+                    phone_number = p.get('phone_number', p.get('service_name', 'غير متوفر')) 
                     price = p.get('price', 0)
                     timestamp = p.get('timestamp', 'غير متوفر')
-                    # تم تعديل النص ليناسب سجل الشراء العام (أرقام + رشق)
-                    message_text += f"*{i+1}. شراء {phone_number} بسعر {price} روبل في {timestamp}*\n"
+                    status = p.get('status', 'غير معروف')
+                    message_text += f"*{i+1}. شراء {phone_number} بسعر {price} روبل ({status}) في {timestamp}*\n"
             else:
                 message_text += "❌ لا يوجد سجل مشتريات حتى الآن."
             
@@ -253,8 +264,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             service = parts[1]
             markup = types.InlineKeyboardMarkup()
             
-            # (أزرار التطبيقات كما هي)
-            # ...
             if service == 'viotp':
                 markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2'))
                 markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3'))
@@ -298,18 +307,17 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 markup.row(types.InlineKeyboardButton('⁞ أوكي 🌟', callback_data=f'show_countries_{service}_ok'))
                 markup.row(types.InlineKeyboardButton('⁞ لاين 📲', callback_data=f'show_countries_{service}_li'))
                 markup.row(types.InlineKeyboardButton('⁞ أمازون 🛒', callback_data=f'show_countries_{service}_am'))
-            # ...
             
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
             server_name = 'سيرفر 1' if service == 'viotp' else ('سيرفر 2' if service == 'smsman' else 'سيرفر 3')
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
 
         elif data.startswith('show_countries_'):
+            # ... (الكود الخاص بعرض الدول)
             parts = data.split('_')
             service, app_id = parts[2], parts[3]
             page = int(parts[5]) if len(parts) > 5 else 1
             
-            # 💡 جلب الدول من بيانات البوت المحفوظة في MongoDB
             local_countries = data_file.get('countries', {}).get(service, {}).get(app_id, {})
             
             if not local_countries:
@@ -343,10 +351,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             parts = data.split('_')
             service, app_id, country_code = parts[1], parts[2], parts[3]
             
-            # 💡 [الخطوة 1] الرد الفوري على ضغطة الزر لتجنب المهلة
             bot.answer_callback_query(call.id, "✅ جاري معالجة طلب الرقم...")
 
-            # جلب البيانات من MongoDB
             country_info = data_file.get('countries', {}).get(service, {}).get(app_id, {}).get(country_code, {})
             price = country_info.get('price', 0)
             
@@ -372,18 +378,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 request_id = result.get('id')
                 phone_number = result.get('number', result.get('Phone', 'غير متوفر'))
                 
-                # -----------------------------------------------------------
-                # 💡 [الخطوة 2: إرسال رسالة الرد أولاً وإضافة التنبيه]
-                # -----------------------------------------------------------
-                
-                # حساب الرصيد المتبقي (قبل التحديث الفعلي في DB)
                 remaining_balance = user_balance - price
                 
                 markup = types.InlineKeyboardMarkup()
                 markup.row(types.InlineKeyboardButton('✅ الحصول على الكود', callback_data=f'get_otp_{service}_{request_id}'))
                 markup.row(types.InlineKeyboardButton('❌ إلغاء الطلب', callback_data=f'cancel_{service}_{request_id}'))
 
-                service_name = 'سيرفر 1' if service == 'viotp' else ('سيرفر 2' if service == 'smsman' else 'سيرفر 3')
                 app_name = country_info.get('name', 'غير معروف')
                 country_name = country_info.get('name', 'غير معروف')
                 
@@ -396,21 +396,18 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     f"**🤖 - الرصيد المتبقي:** `{remaining_balance}`\n" 
                     f"**🔄 - معرف المشتري:** `@{user_doc.get('username', 'غير متوفر')}`\n"
                     f"**🎦 - الموقع:** `soper.com`\n\n"
-                    f"⚠️ *ملاحظة هامة:* لا يمكنك إلغاء الرقم إلا بعد مرور دقيقتين (2) من وقت الحصول عليه." # 💡 التنبيه الجديد
+                    f"⚠️ *ملاحظة هامة:* لا يمكنك إلغاء الرقم إلا بعد مرور دقيقتين (2) من وقت الحصول عليه."
                 )
 
-                # 💡 إرسال الرسالة والتقاط معرفها الصحيح
                 sent_message = bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
                 new_message_id = sent_message.message_id
                 
                 # -----------------------------------------------------------
-                # 💡 [الخطوة 3: حفظ البيانات في MongoDB الآن]
+                # 💡 [حفظ البيانات في MongoDB]
                 # -----------------------------------------------------------
                 
-                # 1. خصم الرصيد
                 update_user_balance(user_id, -price, is_increment=True)
                 
-                # 2. تحديث سجل المشتريات
                 register_user(
                     user_id, 
                     user_doc.get('first_name'), 
@@ -421,11 +418,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         'service': service,
                         'price': price,
                         'status': 'pending',
-                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime()),
+                        'app_name': app_name # حفظ اسم التطبيق لغرض الترويج
                     }
                 )
                 
-                # 3. حفظ الطلب النشط وتفاصيل الرسالة الجديدة
                 data_file = get_bot_data()
                 active_requests = data_file.get('active_requests', {})
                 active_requests[request_id] = {
@@ -434,7 +431,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     'status': 'pending',
                     'service': service,
                     'price': price,
-                    'message_id': new_message_id 
+                    'message_id': new_message_id,
+                    'app_name': app_name # حفظ اسم التطبيق لغرض الترويج
                 }
                 data_file['active_requests'] = active_requests
                 save_bot_data(data_file)
@@ -459,11 +457,13 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 data_file = get_bot_data()
                 active_requests = data_file.get('active_requests', {})
                 
+                app_name = "غير معروف"
                 if request_id in active_requests:
                     phone_number = active_requests[request_id]['phone_number']
+                    app_name = active_requests[request_id].get('app_name', 'غير معروف')
+                    
                     del active_requests[request_id]
                     data_file['active_requests'] = active_requests
-                    # 💡 حفظ بيانات البوت في MongoDB
                     save_bot_data(data_file)
 
                     # 💡 تحديث حالة الطلب في سجل المشتريات إلى "completed"
@@ -476,6 +476,24 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                             'status': 'completed'
                         }
                     )
+                    
+                    # -----------------------------------------------------------
+                    # 💡 [إضافة: إرسال المنشور الترويجي إلى القناة]
+                    # -----------------------------------------------------------
+                    try:
+                        promo_message = (
+                            f"🎉 *تم شراء رقم جديد بنجاح!* 🎉\n\n"
+                            f"**التطبيق:** `{app_name}`\n"
+                            f"**الخدمة:** تم التفعيل بنجاح! ✅\n\n"
+                            f"اشترِ رقمك الافتراضي الآن من @{EESSMT}"
+                        )
+                        # -100xxxxxxxxxxx يجب استبدالها بآيدي القناة الفعلي، 
+                        # أو استخدام اسم القناة @EESSMT مباشرةً إذا كانت عامة
+                        bot.send_message(f'@{EESSMT}', promo_message, parse_mode='Markdown')
+                        logging.info(f"Sent promo message to @{EESSMT} for Req ID {request_id}")
+                    except Exception as e:
+                        logging.error(f"Failed to send promo message to channel @{EESSMT}: {e}")
+                    # -----------------------------------------------------------
 
                     bot.send_message(chat_id, f"✅ *رمزك هو: {otp_code}*\n\nالرقم: *{phone_number}*", parse_mode='Markdown')
                 else:
@@ -487,12 +505,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             parts = data.split('_')
             service, request_id = parts[1], parts[2]
             
-            # 💡 الرد الفوري على ضغطة الزر
             bot.answer_callback_query(call.id, "جاري معالجة طلب الإلغاء...")
             
             result = None
-            success_api_call = False # متغير جديد لتتبع نجاح اتصال API
+            success_api_call = False 
             
+            # 1. محاولة الإلغاء في API الموقع
             if service == 'viotp':
                 result = viotp_client.cancel_request(request_id)
                 if result and result.get('success'):
@@ -500,12 +518,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             
             elif service == 'smsman':
                 result = smsman_api['cancel_smsman_request'](request_id)
-                
-                # 💡 [التصحيح الحاسم لمشكلة ACCESS_CANCEL]
-                if result and (result.get('message') == 'ACCESS_CANCEL'):
-                    success_api_call = True # نعتبرها نجاحاً رغم status: error
-                # فحص الردود الأخرى التي تدل على النجاح (للتأمين)
-                elif result and (result.get('status') == 'success' or result.get('status') == 'cancelled'):
+                # 💡 [التصحيح الحاسم] فحص ACCESS_CANCEL و SUCCESS
+                if result and (result.get('message') == 'ACCESS_CANCEL' or result.get('status') == 'success' or result.get('status') == 'cancelled'):
                     success_api_call = True
             
             elif service == 'tigersms':
@@ -515,35 +529,39 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             
             logging.info(f"Response from {service} for CANCEL Req ID {request_id}: {result}")
             
-            # 💡 التحقق الآن من متغير success_api_call
+            # 2. إذا نجح الإلغاء في API، ننتقل لمعالجة الرصيد في البوت
             if success_api_call:
-                data_file = get_bot_data()
-                active_requests = data_file.get('active_requests', {})
+                # 💡 [التصحيح الرئيسي] البحث عن معلومات الطلب في سجل المشتريات
+                request_info = get_cancellable_request_info(user_doc, request_id)
                 
-                if request_id in active_requests:
+                if request_info:
                     try:
-                        # 💡 استخدام try/except لتأمين عمليات MongoDB
-                        request_info = active_requests[request_id]
-                        user_id_from_request = request_info['user_id']
-                        price_to_restore = request_info['price']
+                        # جلب السعر ومعلومات المستخدم من سجل المشتريات
+                        price_to_restore = request_info['price_to_restore']
                         
-                        # 1. استرجاع الرصيد للمستخدم مباشرة
-                        update_user_balance(user_id_from_request, price_to_restore, is_increment=True)
+                        # أ. استرجاع الرصيد للمستخدم
+                        update_user_balance(user_id, price_to_restore, is_increment=True)
                         
-                        # 2. حذف سجل الطلب من قائمة المشتريات
+                        # ب. تحديث حالة الطلب في سجل المشتريات إلى "cancelled"
                         register_user(
-                            user_id_from_request, 
+                            user_id, 
                             user_doc.get('first_name'), 
                             user_doc.get('username'),
-                            delete_purchase_id=request_id
+                            update_purchase_status={
+                                'request_id': request_id, 
+                                'status': 'cancelled'
+                            }
                         )
                         
-                        # 3. حذف الطلب من الطلبات النشطة
-                        del active_requests[request_id]
-                        data_file['active_requests'] = active_requests
-                        save_bot_data(data_file)
+                        # ج. إزالة الطلب من الطلبات النشطة (إذا كان موجوداً)
+                        data_file = get_bot_data()
+                        active_requests = data_file.get('active_requests', {})
+                        if request_id in active_requests:
+                            del active_requests[request_id]
+                            data_file['active_requests'] = active_requests
+                            save_bot_data(data_file)
                         
-                        # 4. إرسال رسالة النجاح
+                        # د. إرسال رسالة النجاح
                         bot.send_message(chat_id, f"✅ **تم إلغاء الطلب بنجاح!** تم استرجاع مبلغ *{price_to_restore}* روبل إلى رصيدك.", parse_mode='Markdown')
                         
                     except Exception as e:
@@ -552,9 +570,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         bot.send_message(chat_id, f"⚠️ تم إلغاء طلبك في الموقع، ولكن حدث **خطأ أثناء استرجاع رصيدك**. يرجى التواصل مع الدعم (@{ESM7AT}) وذكر آيدي الطلب: `{request_id}`.", parse_mode='Markdown')
                         
                 else:
-                    # هذه الحالة تحدث إذا تم حذف الطلب من active_requests مسبقاً
-                    bot.send_message(chat_id, "❌ حدث خطأ: لا يوجد طلب نشط بهذا الآيدي في البوت. يرجى مراجعة رصيدك وسجل مشترياتك.", parse_mode='Markdown')
+                    # هذه الحالة تحدث إذا كان الطلب ملغى بالفعل أو غير موجود في سجل المشتريات
+                    bot.send_message(chat_id, "⚠️ تم إلغاء طلبك في الموقع، لكنه **غير موجود كطلب نشط** في قاعدة البيانات لسبب ما. يرجى مراجعة رصيدك وسجل مشترياتك للتأكد من استرجاع المبلغ.", parse_mode='Markdown')
 
             else:
-                # هذا الرد في حالة فشل الاتصال/الإلغاء في API الموقع
+                # هذا الرد في حالة فشل الإلغاء في API الموقع
                 bot.send_message(chat_id, "❌ فشل إلغاء الطلب في الموقع. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.")
