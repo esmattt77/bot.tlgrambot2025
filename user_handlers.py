@@ -95,8 +95,37 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             return
         
         elif data == 'Payment':
-            bot.send_message(chat_id, f"💰 *لشحن رصيدك، يرجى التواصل مع المشرف عبر هذا الحساب: @{ESM7AT}.*", parse_mode='Markdown')
+            # 💡 [تعديل] عرض طرق الشحن الجديدة
+            markup = types.InlineKeyboardMarkup()
+            markup.row(types.InlineKeyboardButton('💳 كريمي كول', callback_data='pay_karemi'))
+            markup.row(types.InlineKeyboardButton('📱 محفظة جوالي', callback_data='pay_jawali'))
+            markup.row(types.InlineKeyboardButton('🌐 بينانس (Binance)', callback_data='pay_binance'))
+            markup.row(types.InlineKeyboardButton('💵 بايير (Payeer)', callback_data='pay_payeer'))
+            markup.row(types.InlineKeyboardButton('🔙 رجوع', callback_data='back'))
+            
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, 
+                                  text="💰 *اختر طريقة شحن الرصيد المفضلة لديك. سيتم تحويلك لمحادثة المشرف لإتمام عملية الشحن.*\n\n*ملاحظة:* الحد الأدنى للشحن هو 100 روبل.", 
+                                  parse_mode='Markdown', reply_markup=markup)
             return
+            
+        elif data.startswith('pay_'):
+            method = {
+                'pay_karemi': 'كريمي كول',
+                'pay_jawali': 'محفظة جوالي',
+                'pay_binance': 'بينانس',
+                'pay_payeer': 'بايير'
+            }.get(data, 'طريقة دفع غير معروفة')
+            
+            message_text = (
+                f"✅ *تم اختيار طريقة الشحن: {method}.*\n\n"
+                f"لإتمام عملية الشحن، يرجى التواصل مع المشرف (@{ESM7AT}) وإرسال الآتي:\n"
+                f"1. *الكمية* التي تريد شحنها (بالروبل).\n"
+                f"2. إثبات الدفع (لقطة شاشة).\n"
+                f"3. *آيدي حسابك:* `{user_id}`"
+            )
+            bot.send_message(chat_id, message_text, parse_mode='Markdown')
+            return
+
         elif data == 'sh':
             markup = types.InlineKeyboardMarkup()
             sh_services = data_file.get('sh_services', {})
@@ -117,10 +146,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {service_price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
                 return
 
-            # 💡 خصم الرصيد من MongoDB مباشرة
             update_user_balance(user_id, -service_price, is_increment=True)
             
-            # 💡 تحديث سجل المشتريات
             register_user(
                 user_id, 
                 user_doc.get('first_name'), 
@@ -133,13 +160,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 }
             )
 
-            # 💡 يجب إعادة جلب الرصيد المتبقي
             new_user_doc = get_user_doc(user_id)
             remaining_balance = new_user_doc.get('balance', 0)
 
             bot.send_message(chat_id, f"✅ تم شراء خدمة `{service_name}` بنجاح! سيتم معالجة طلبك قريباً.\n*رصيدك المتبقي:* `{remaining_balance}` روبل.", parse_mode='Markdown')
             return
-        # ... (باقي وظائف القائمة الرئيسية)
+
         elif data == 'Wo':
             bot.send_message(chat_id, "🛍 *لا توجد عروض خاصة متاحة حالياً. تابعنا للحصول على التحديثات!*", parse_mode='Markdown')
             return
@@ -180,10 +206,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
                     return
                 
-                # 💡 خصم الرصيد من MongoDB مباشرة
                 update_user_balance(user_id, -price, is_increment=True)
 
-                # 💡 تحديث سجل المشتريات
                 register_user(
                     user_id,
                     user_doc.get('first_name'), 
@@ -197,19 +221,15 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     }
                 )
 
-                # حذف الرقم من قائمة الأرقام الجاهزة في بيانات البوت
                 del ready_numbers[index_to_buy]
                 data_file['ready_numbers'] = ready_numbers
-                # 💡 حفظ بيانات البوت في MongoDB
                 save_bot_data(data_file)
                 
-                # 💡 إعادة جلب الرصيد المتبقي
                 new_user_doc = get_user_doc(user_id)
                 remaining_balance = new_user_doc.get('balance', 0)
                 
                 bot.send_message(chat_id, f"✅ تم شراء الرقم `{number_data.get('number')}` بنجاح.\n\nالرصيد المتبقي: `{remaining_balance}` روبل.")
                 
-                # إرسال إشعار للمشرف
                 bot.send_message(DEVELOPER_ID, f"🔔 *تم بيع رقم جاهز!*\n\n*الرقم:* `{number_data.get('number')}`\n*التطبيق:* `{number_data.get('app')}`\n*السعر:* `{price}` روبل\n*للمستخدم:* `@{user_doc.get('username', 'غير متوفر')}`", parse_mode='Markdown')
             else:
                 bot.send_message(chat_id, "❌ حدث خطأ. الرقم المحدد غير متوفر.")
@@ -313,7 +333,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
 
         elif data.startswith('show_countries_'):
-            # ... (الكود الخاص بعرض الدول)
             parts = data.split('_')
             service, app_id = parts[2], parts[3]
             page = int(parts[5]) if len(parts) > 5 else 1
@@ -402,10 +421,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 sent_message = bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
                 new_message_id = sent_message.message_id
                 
-                # -----------------------------------------------------------
                 # 💡 [حفظ البيانات في MongoDB]
-                # -----------------------------------------------------------
-                
                 update_user_balance(user_id, -price, is_increment=True)
                 
                 register_user(
@@ -419,7 +435,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         'price': price,
                         'status': 'pending',
                         'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime()),
-                        'app_name': app_name # حفظ اسم التطبيق لغرض الترويج
+                        'app_name': app_name
                     }
                 )
                 
@@ -432,7 +448,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     'service': service,
                     'price': price,
                     'message_id': new_message_id,
-                    'app_name': app_name # حفظ اسم التطبيق لغرض الترويج
+                    'app_name': app_name
                 }
                 data_file['active_requests'] = active_requests
                 save_bot_data(data_file)
@@ -466,7 +482,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     data_file['active_requests'] = active_requests
                     save_bot_data(data_file)
 
-                    # 💡 تحديث حالة الطلب في سجل المشتريات إلى "completed"
                     register_user(
                         user_id, 
                         user_doc.get('first_name'), 
@@ -477,9 +492,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         }
                     )
                     
-                    # -----------------------------------------------------------
                     # 💡 [إضافة: إرسال المنشور الترويجي إلى القناة]
-                    # -----------------------------------------------------------
                     try:
                         promo_message = (
                             f"🎉 *تم شراء رقم جديد بنجاح!* 🎉\n\n"
@@ -487,14 +500,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                             f"**الخدمة:** تم التفعيل بنجاح! ✅\n\n"
                             f"اشترِ رقمك الافتراضي الآن من @{EESSMT}"
                         )
-                        # -100xxxxxxxxxxx يجب استبدالها بآيدي القناة الفعلي، 
-                        # أو استخدام اسم القناة @EESSMT مباشرةً إذا كانت عامة
+                        # نستخدم @EESSMT مباشرةً كآيدي للقناة
                         bot.send_message(f'@{EESSMT}', promo_message, parse_mode='Markdown')
                         logging.info(f"Sent promo message to @{EESSMT} for Req ID {request_id}")
                     except Exception as e:
                         logging.error(f"Failed to send promo message to channel @{EESSMT}: {e}")
-                    # -----------------------------------------------------------
-
+                    
                     bot.send_message(chat_id, f"✅ *رمزك هو: {otp_code}*\n\nالرقم: *{phone_number}*", parse_mode='Markdown')
                 else:
                     bot.send_message(chat_id, "❌ حدث خطأ، لم يتم العثور على الطلب.")
@@ -518,7 +529,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             
             elif service == 'smsman':
                 result = smsman_api['cancel_smsman_request'](request_id)
-                # 💡 [التصحيح الحاسم] فحص ACCESS_CANCEL و SUCCESS
                 if result and (result.get('message') == 'ACCESS_CANCEL' or result.get('status') == 'success' or result.get('status') == 'cancelled'):
                     success_api_call = True
             
@@ -531,14 +541,18 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             
             # 2. إذا نجح الإلغاء في API، ننتقل لمعالجة الرصيد في البوت
             if success_api_call:
-                # 💡 [التصحيح الرئيسي] البحث عن معلومات الطلب في سجل المشتريات
-                request_info = get_cancellable_request_info(user_doc, request_id)
                 
-                if request_info:
+                # 💡 [التصحيح الحاسم] البحث عن معلومات الطلب في سجل المشتريات
+                request_info_from_purchases = get_cancellable_request_info(user_doc, request_id)
+                
+                if request_info_from_purchases:
                     try:
-                        # جلب السعر ومعلومات المستخدم من سجل المشتريات
-                        price_to_restore = request_info['price_to_restore']
+                        # 💡 سحب السعر بشكل صحيح من الدالة المساعدة
+                        price_to_restore = request_info_from_purchases.get('price_to_restore', 0)
                         
+                        if price_to_restore == 0:
+                            raise ValueError("Price to restore is zero, refund aborted.")
+
                         # أ. استرجاع الرصيد للمستخدم
                         update_user_balance(user_id, price_to_restore, is_increment=True)
                         
@@ -565,13 +579,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         bot.send_message(chat_id, f"✅ **تم إلغاء الطلب بنجاح!** تم استرجاع مبلغ *{price_to_restore}* روبل إلى رصيدك.", parse_mode='Markdown')
                         
                     except Exception as e:
-                        # 💡 في حال فشل أي عملية MongoDB، نسجل الخطأ ونبلغ المستخدم
-                        logging.error(f"MongoDB Error during CANCEL/REFUND for Req ID {request_id}: {e}")
+                        logging.error(f"MongoDB/Refund Error during CANCEL for Req ID {request_id}: {e}")
                         bot.send_message(chat_id, f"⚠️ تم إلغاء طلبك في الموقع، ولكن حدث **خطأ أثناء استرجاع رصيدك**. يرجى التواصل مع الدعم (@{ESM7AT}) وذكر آيدي الطلب: `{request_id}`.", parse_mode='Markdown')
                         
                 else:
-                    # هذه الحالة تحدث إذا كان الطلب ملغى بالفعل أو غير موجود في سجل المشتريات
-                    bot.send_message(chat_id, "⚠️ تم إلغاء طلبك في الموقع، لكنه **غير موجود كطلب نشط** في قاعدة البيانات لسبب ما. يرجى مراجعة رصيدك وسجل مشترياتك للتأكد من استرجاع المبلغ.", parse_mode='Markdown')
+                    # هذه الكتلة لن تمنع الإرجاع بعد الآن وستظهر رسالة توضيحية للمستخدم
+                    bot.send_message(chat_id, "⚠️ تم إلغاء طلبك في الموقع، لكنه **لم يكن مسجلاً كطلب معلق** في قاعدة البيانات لدينا. يرجى مراجعة رصيدك للتأكد من استرجاع المبلغ، وإذا لم يسترجع، يرجى التواصل مع الدعم.", parse_mode='Markdown')
 
             else:
                 # هذا الرد في حالة فشل الإلغاء في API الموقع
