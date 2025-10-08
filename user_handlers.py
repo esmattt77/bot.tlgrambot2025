@@ -483,7 +483,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             else:
                 bot.send_message(chat_id, "❌ لا يوجد كود حتى الآن. حاول مجدداً.", reply_markup=call.message.reply_markup)
                 
-                elif data.startswith('cancel_'):
+        elif data.startswith('cancel_'):
             parts = data.split('_')
             service, request_id = parts[1], parts[2]
             
@@ -500,10 +500,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             
             elif service == 'smsman':
                 result = smsman_api['cancel_smsman_request'](request_id)
-                # 💡 [تصحيح حاسم] التحقق من رسالة ACCESS_CANCEL الخاصة بـ SMSMAN
+                
+                # 💡 [التصحيح الحاسم لمشكلة ACCESS_CANCEL]
                 if result and (result.get('message') == 'ACCESS_CANCEL'):
                     success_api_call = True # نعتبرها نجاحاً رغم status: error
-                # في حال كانت الردود الأخرى التي تدل على النجاح (للتأمين)
+                # فحص الردود الأخرى التي تدل على النجاح (للتأمين)
                 elif result and (result.get('status') == 'success' or result.get('status') == 'cancelled'):
                     success_api_call = True
             
@@ -557,4 +558,3 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             else:
                 # هذا الرد في حالة فشل الاتصال/الإلغاء في API الموقع
                 bot.send_message(chat_id, "❌ فشل إلغاء الطلب في الموقع. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.")
-                
