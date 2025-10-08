@@ -249,9 +249,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             bot.send_message(chat_id, message_text, parse_mode='Markdown')
             
         elif data.startswith('service_'):
-            service = data.split('_')[1]
+            parts = data.split('_')
+            service = parts[1]
             markup = types.InlineKeyboardMarkup()
-            # ... (باقي أزرار التطبيقات كما هي)
+            
+            # (أزرار التطبيقات كما هي)
+            # ...
             if service == 'viotp':
                 markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2'))
                 markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3'))
@@ -295,7 +298,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 markup.row(types.InlineKeyboardButton('⁞ أوكي 🌟', callback_data=f'show_countries_{service}_ok'))
                 markup.row(types.InlineKeyboardButton('⁞ لاين 📲', callback_data=f'show_countries_{service}_li'))
                 markup.row(types.InlineKeyboardButton('⁞ أمازون 🛒', callback_data=f'show_countries_{service}_am'))
-
+            # ...
+            
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
             server_name = 'سيرفر 1' if service == 'viotp' else ('سيرفر 2' if service == 'smsman' else 'سيرفر 3')
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
@@ -369,7 +373,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 phone_number = result.get('number', result.get('Phone', 'غير متوفر'))
                 
                 # -----------------------------------------------------------
-                # 💡 [الخطوة 2: إرسال رسالة الرد أولاً]
+                # 💡 [الخطوة 2: إرسال رسالة الرد أولاً وإضافة التنبيه]
                 # -----------------------------------------------------------
                 
                 # حساب الرصيد المتبقي (قبل التحديث الفعلي في DB)
@@ -389,9 +393,10 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     f"**📥 - الدولة:** `{country_name}`\n"
                     f"**🔥 - الأيدي:** `{user_id}`\n"
                     f"**💸 - السعر:** `Ꝑ{price}`\n"
-                    f"**🤖 - الرصيد المتبقي:** `{remaining_balance}`\n" # استخدام الرصيد المحسوب
+                    f"**🤖 - الرصيد المتبقي:** `{remaining_balance}`\n" 
                     f"**🔄 - معرف المشتري:** `@{user_doc.get('username', 'غير متوفر')}`\n"
-                    f"**🎦 - الموقع:** `soper.com`"
+                    f"**🎦 - الموقع:** `soper.com`\n\n"
+                    f"⚠️ *ملاحظة هامة:* لا يمكنك إلغاء الرقم إلا بعد مرور دقيقتين (2) من وقت الحصول عليه." # 💡 التنبيه الجديد
                 )
 
                 # 💡 إرسال الرسالة والتقاط معرفها الصحيح
@@ -429,7 +434,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     'status': 'pending',
                     'service': service,
                     'price': price,
-                    'message_id': new_message_id # 💡 [تصحيح] استخدام الـ ID الصحيح
+                    'message_id': new_message_id 
                 }
                 data_file['active_requests'] = active_requests
                 save_bot_data(data_file)
@@ -490,11 +495,13 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 result = viotp_client.cancel_request(request_id)
             elif service == 'smsman':
                 result = smsman_api['cancel_smsman_request'](request_id)
-                # 💡 توحيد استجابة smsman (التأكد من أن حالة 'success' موجودة)
-                if result and result.get('status') == 'success':
+                # 💡 [تصحيح الإلغاء] توحيد استجابة smsman لضمان التعرف على النجاح
+                if result and (result.get('status') == 'success' or result.get('status') == 'cancelled' or result.get('message') == 'ACCESS_READY'):
                     result['success'] = True
             elif service == 'tigersms':
                 result = tiger_sms_client.cancel_request(request_id)
+            
+            logging.info(f"Response from {service} for CANCEL Req ID {request_id}: {result}")
             
             # 💡 التحقق من نجاح عملية الإلغاء في API الموقع
             if result and result.get('success'):
@@ -503,7 +510,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 
                 if request_id in active_requests:
                     try:
-                        # 💡 [تحسين] استخدام try/except لتأمين عمليات MongoDB
+                        # 💡 استخدام try/except لتأمين عمليات MongoDB
                         request_info = active_requests[request_id]
                         user_id_from_request = request_info['user_id']
                         price_to_restore = request_info['price']
@@ -511,7 +518,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         # 1. استرجاع الرصيد للمستخدم مباشرة
                         update_user_balance(user_id_from_request, price_to_restore, is_increment=True)
                         
-                        # 2. حذف سجل الطلب من قائمة المشتريات (أو تحديث حالته إلى 'cancelled')
+                        # 2. حذف سجل الطلب من قائمة المشتريات
                         register_user(
                             user_id_from_request, 
                             user_doc.get('first_name'), 
