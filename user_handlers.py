@@ -483,28 +483,39 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             else:
                 bot.send_message(chat_id, "❌ لا يوجد كود حتى الآن. حاول مجدداً.", reply_markup=call.message.reply_markup)
                 
-        elif data.startswith('cancel_'):
+                elif data.startswith('cancel_'):
             parts = data.split('_')
             service, request_id = parts[1], parts[2]
             
-            # 💡 [تعديل] الرد الفوري على ضغطة الزر
+            # 💡 الرد الفوري على ضغطة الزر
             bot.answer_callback_query(call.id, "جاري معالجة طلب الإلغاء...")
             
             result = None
+            success_api_call = False # متغير جديد لتتبع نجاح اتصال API
+            
             if service == 'viotp':
                 result = viotp_client.cancel_request(request_id)
+                if result and result.get('success'):
+                    success_api_call = True
+            
             elif service == 'smsman':
                 result = smsman_api['cancel_smsman_request'](request_id)
-                # 💡 [تصحيح الإلغاء] توحيد استجابة smsman لضمان التعرف على النجاح
-                if result and (result.get('status') == 'success' or result.get('status') == 'cancelled' or result.get('message') == 'ACCESS_READY'):
-                    result['success'] = True
+                # 💡 [تصحيح حاسم] التحقق من رسالة ACCESS_CANCEL الخاصة بـ SMSMAN
+                if result and (result.get('message') == 'ACCESS_CANCEL'):
+                    success_api_call = True # نعتبرها نجاحاً رغم status: error
+                # في حال كانت الردود الأخرى التي تدل على النجاح (للتأمين)
+                elif result and (result.get('status') == 'success' or result.get('status') == 'cancelled'):
+                    success_api_call = True
+            
             elif service == 'tigersms':
                 result = tiger_sms_client.cancel_request(request_id)
+                if result and result.get('success'):
+                    success_api_call = True
             
             logging.info(f"Response from {service} for CANCEL Req ID {request_id}: {result}")
             
-            # 💡 التحقق من نجاح عملية الإلغاء في API الموقع
-            if result and result.get('success'):
+            # 💡 التحقق الآن من متغير success_api_call
+            if success_api_call:
                 data_file = get_bot_data()
                 active_requests = data_file.get('active_requests', {})
                 
@@ -546,3 +557,4 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             else:
                 # هذا الرد في حالة فشل الاتصال/الإلغاء في API الموقع
                 bot.send_message(chat_id, "❌ فشل إلغاء الطلب في الموقع. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.")
+                
