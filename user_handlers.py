@@ -3,6 +3,7 @@ import json
 import time
 import logging
 import telebot.apihelper
+import random # 🆕 لإضافة دالة توليد رقم عشوائي لمعرف المعاملة
 
 # تهيئة نظام التسجيل
 logging.basicConfig(
@@ -22,6 +23,10 @@ from db_manager import (
 
 def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
     
+    # دالة مساعدة للوصول إلى مخزون الأرقام الجاهزة
+    def get_ready_numbers_stock():
+        return get_bot_data().get('ready_numbers_stock', {})
+
     # 💡 [التصحيح النهائي لنوع البيانات] دالة مساعدة مرنة للبحث عن الطلب في سجل المشتريات
     def get_cancellable_request_info(user_doc, request_id):
         purchases = user_doc.get('purchases', [])
@@ -182,57 +187,145 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             bot.send_message(chat_id, "💳 *متجر الكروت متوفر الآن! تواصل مع الدعم لشراء كرت.*", parse_mode='Markdown')
             return
 
+        # 🆕 --- قائمة الأرقام الجاهزة (العرض) ---
         elif data == 'ready':
-            ready_numbers = data_file.get('ready_numbers', [])
-            if not ready_numbers:
+            ready_numbers_stock = get_ready_numbers_stock()
+            
+            if not ready_numbers_stock:
                 bot.send_message(chat_id, "❌ لا توجد أرقام جاهزة متاحة حالياً.")
                 return
 
             markup = types.InlineKeyboardMarkup()
-            for i, num_data in enumerate(ready_numbers):
-                markup.row(types.InlineKeyboardButton(f"{num_data.get('app', 'غير معروف')} - {num_data.get('price', 'غير معروف')} روبل", callback_data=f"buy_ready_{i}"))
+            # 💡 نستخدم رقم الهاتف كـ key في المخزون
+            for number, num_data in ready_numbers_stock.items():
+                country = num_data.get('country', 'الدولة')
+                app_state = num_data.get('state', 'تطبيق')
+                price = num_data.get('price', 0)
+                # إخفاء جزء من الرقم للعرض
+                num_hidden = number[:len(number) - 4] + "••••"
+                
+                # استخدام رقم الهاتف كاملاً في الكولباك لسهولة التعامل (buy_ready_NUMBER)
+                markup.row(types.InlineKeyboardButton(f"[{country}] {app_state} - {num_hidden} ({price} روبل)", callback_data=f"confirm_buy_ready_{number}"))
+            
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🔰 *الأرقام الجاهزة المتاحة حالياً:*", parse_mode='Markdown', reply_markup=markup)
 
-        elif data.startswith('buy_ready_'):
-            index_to_buy = int(data.split('_')[-1])
-            ready_numbers = data_file.get('ready_numbers', [])
+        # 🆕 --- تأكيد الشراء (الصيغة المطلوبة الأولى) ---
+        elif data.startswith('confirm_buy_ready_'):
+            # رقم الهاتف بالكامل هو key
+            number_key = data.split('_', 3)[-1] 
+            ready_numbers_stock = get_ready_numbers_stock()
+            number_data = ready_numbers_stock.get(number_key)
 
-            if 0 <= index_to_buy < len(ready_numbers):
-                number_data = ready_numbers[index_to_buy]
-                price = number_data.get('price', 0)
+            if not number_data:
+                bot.send_message(chat_id, "❌ الرقم المحدد غير متوفر حالياً. يرجى العودة للقائمة الرئيسية.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('- رجوع.', callback_data='back')))
+                return
+            
+            name = number_data.get('country', 'رقم جاهز')
+            price = number_data.get('price', 0)
 
-                if user_balance < price:
-                    bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
-                    return
+            # 🚨 التحقق من الرصيد قبل عرض التأكيد
+            if user_balance < price:
+                bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
+                return
                 
-                update_user_balance(user_id, -price, is_increment=True)
+            markup = types.InlineKeyboardMarkup()
+            # الكولباك الحقيقي للشراء
+            markup.row(types.InlineKeyboardButton(f"✅ تأكيد الشراء {price} روبل", callback_data=f"execute_buy_ready_{number_key}"))
+            markup.row(types.InlineKeyboardButton('❌ إلغاء', callback_data='ready'))
 
-                register_user(
-                    user_id,
-                    user_doc.get('first_name'), 
-                    user_doc.get('username'), 
-                    new_purchase={
-                        'phone_number': number_data.get('number'),
-                        'app': number_data.get('app'),
-                        'price': price,
-                        'status': 'ready_number_purchased',
-                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
-                    }
-                )
+            # استخدام الصيغة النصية المطلوبة
+            message_text = (
+                f"☑️ أنت الان تقوم بشراء رقم جاهز من البوت.\n"
+                f"⚠️ *ملاحظة* : \n"
+                f"1⃣ > *لا نتحمل مسؤلية حضر الرقم من واتساب بسبب إهمالك*\n"
+                f"2⃣ > *لا نتحمل مسؤلية تخريب الكود بمخالفة التعليمات*\n"
+                f"3⃣ > *بعد شراء الرقم لاتستطيع ان تقوم بإلغاء الشراء أو التراجع*\n\n"
+                f"📮 > هل تريد شراء دولة -> *{name}* بسعر -> *₽ {price}* ⬇️"
+            )
+            
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown', reply_markup=markup)
 
-                del ready_numbers[index_to_buy]
-                data_file['ready_numbers'] = ready_numbers
-                save_bot_data(data_file)
-                
-                new_user_doc = get_user_doc(user_id)
-                remaining_balance = new_user_doc.get('balance', 0)
-                
-                bot.send_message(chat_id, f"✅ تم شراء الرقم `{number_data.get('number')}` بنجاح.\n\nالرصيد المتبقي: `{remaining_balance}` روبل.")
-                
-                bot.send_message(DEVELOPER_ID, f"🔔 *تم بيع رقم جاهز!*\n\n*الرقم:* `{number_data.get('number')}`\n*التطبيق:* `{number_data.get('app')}`\n*السعر:* `{price}` روبل\n*للمستخدم:* `@{user_doc.get('username', 'غير متوفر')}`", parse_mode='Markdown')
-            else:
-                bot.send_message(chat_id, "❌ حدث خطأ. الرقم المحدد غير متوفر.")
+        # 🆕 --- تنفيذ الشراء (الصيغة المطلوبة الثانية) ---
+        elif data.startswith('execute_buy_ready_'):
+            # رقم الهاتف بالكامل هو key
+            number_key = data.split('_', 3)[-1] 
+            ready_numbers_stock = get_ready_numbers_stock()
+            number_data = ready_numbers_stock.get(number_key)
+            
+            if not number_data:
+                bot.send_message(chat_id, "❌ الرقم المحدد غير متوفر حالياً. ربما تم شراؤه للتو.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('- رجوع.', callback_data='back')))
+                return
+            
+            price = number_data.get('price', 0)
+            
+            # 🚨 التحقق النهائي من الرصيد والوجود
+            if user_balance < price:
+                # هذه الرسالة لا يجب أن تظهر نظريًا لأننا تحققنا في الخطوة السابقة، لكنها طبقة أمان
+                bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية. رصيدك الحالي: {user_balance}*", parse_mode='Markdown')
+                return
+
+            # 1. تنفيذ الخصم
+            update_user_balance(user_id, -price, is_increment=True)
+            
+            # 2. إزالة الرقم من المخزون وحفظ التعديل
+            data_file = get_bot_data()
+            if number_key in data_file.get('ready_numbers_stock', {}):
+                # 💡 يجب التأكد من استخدام save_bot_data بالشكل الصحيح
+                # يتم حذف الرقم من نسخة الـ data_file ثم حفظ التحديث
+                del data_file['ready_numbers_stock'][number_key] 
+                save_bot_data({'ready_numbers_stock': data_file['ready_numbers_stock']})
+            
+            # 3. تسجيل عملية الشراء (استخدام رقم عشوائي كـ ID)
+            # 💡 توليد رقم معاملة فريد
+            idnums = random.randint(100000, 999999) 
+            register_user(
+                user_id,
+                user_doc.get('first_name'), 
+                user_doc.get('username'), 
+                new_purchase={
+                    'request_id': idnums, # استخدام idnums هنا
+                    'phone_number': number_key,
+                    'app': number_data.get('state', 'جاهز'),
+                    'price': price,
+                    'status': 'ready_number_purchased',
+                    'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+                }
+            )
+
+            # 4. تحديث الرصيد المتبقي
+            new_user_doc = get_user_doc(user_id)
+            remaining_balance = new_user_doc.get('balance', 0)
+
+            # 5. إرسال رسالة الإيصال بالصيغة المطلوبة
+            number = number_key
+            code = number_data.get('code', 'غير متوفر (يرجى التواصل مع الدعم)')
+            what = number_data.get('note', 'لا توجد ملاحظة')
+            
+            # استخدام الصيغة النصية المطلوبة
+            message_text = (
+                f"☑️ *- تم شراء الرقم بنجاح* 🙂🖤\n\n"
+                f"📞 > الرقم : *{number}*\n"
+                f"🔥 > الكود : *{code}*\n"
+                f"♨️ > السعر : *₽ {price}*\n"
+                f"⚠️ > ملاحضة : *{what}*\n"
+                f"🅿️ > رقم المعاملة : *{idnums}*\n\n"
+                f"☑️ *- تم حذف الرقم* من قائمة الأرقام الجاهزة\n"
+                f"🗃 *- تم حفظ الرقم* في سجلك للأرقام 🤙\n"
+                f"✅ - تم خصم *₽ {price}* من نقودك *( {remaining_balance} )* 💰\n"
+                f"💸"
+            )
+            
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown')
+            
+            # إشعار للمطور
+            bot.send_message(DEVELOPER_ID, 
+                             f"🔔 *تم بيع رقم جاهز!*\n"
+                             f"*الرقم:* `{number}`\n"
+                             f"*السعر:* `{price}` روبل\n"
+                             f"*للمستخدم:* `@{user_doc.get('username', 'غير متوفر')}`", 
+                             parse_mode='Markdown')
+            return
 
         elif data == 'gents':
             bot.send_message(chat_id, "👨‍💻 *نظام الوكلاء قيد المراجعة. إذا كنت مهتماً، يمكنك التواصل مع المشرف.*", parse_mode='Markdown')
@@ -268,6 +361,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             message_text = f"💰 رصيدك الحالي هو: *{balance}* روبل.\n\n"
             if purchases:
                 message_text += "📝 **سجل مشترياتك الأخيرة:**\n"
+                # عرض آخر 5 مشتريات
                 for i, p in enumerate(purchases[-5:]):
                     phone_number = p.get('phone_number', p.get('service_name', 'غير متوفر')) 
                     price = p.get('price', 0)
@@ -285,48 +379,48 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             markup = types.InlineKeyboardMarkup()
             
             if service == 'viotp':
-                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2'))
-                markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3'))
-                markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4'))
-                markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_5'))
-                markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_6'))
-                markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_7"))
-                markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_8'))
-                markup.row(types.InlineKeyboardButton('⁞ إيمو 🐦', callback_data=f'show_countries_{service}_9'))
-                markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_11'))
-                markup.row(types.InlineKeyboardButton('⁞ OK 🌟', callback_data=f'show_countries_{service}_12'))
-                markup.row(types.InlineKeyboardButton('⁞ Viber 📲', callback_data=f'show_countries_{service}_16'))
-                markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13'))
-                markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14'))
+                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_5_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_6_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_7_page_1"))
+                markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_8_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ إيمو 🐦', callback_data=f'show_countries_{service}_9_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_11_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ OK 🌟', callback_data=f'show_countries_{service}_12_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ Viber 📲', callback_data=f'show_countries_{service}_16_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14_page_1'))
             elif service == 'smsman':
-                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2'))
-                markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3'))
-                markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4'))
-                markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_5'))
-                markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_6'))
-                markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_7"))
-                markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_8'))
-                markup.row(types.InlineKeyboardButton('⁞ إيمو 🐦', callback_data=f'show_countries_{service}_9'))
-                markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_11'))
-                markup.row(types.InlineKeyboardButton('⁞ OK 🌟', callback_data=f'show_countries_{service}_12'))
-                markup.row(types.InlineKeyboardButton('⁞ Viber 📲', callback_data=f'show_countries_{service}_16'))
-                markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13'))
-                markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14'))
+                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_5_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_6_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_7_page_1"))
+                markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_8_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ إيمو 🐦', callback_data=f'show_countries_{service}_9_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_11_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ OK 🌟', callback_data=f'show_countries_{service}_12_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ Viber 📲', callback_data=f'show_countries_{service}_16_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14_page_1'))
             elif service == 'tigersms':
-                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_wa'))
-                markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_tg'))
-                markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_fb'))
-                markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_ig'))
-                markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_tw'))
-                markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_tt"))
-                markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_go'))
-                markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_sn'))
-                markup.row(types.InlineKeyboardButton('⁞ ديسكورد 🎮', callback_data=f'show_countries_{service}_ds'))
-                markup.row(types.InlineKeyboardButton('⁞ تيندر ❤️', callback_data=f'show_countries_{service}_td'))
-                markup.row(types.InlineKeyboardButton('⁞ أوبر 🚕', callback_data=f'show_countries_{service}_ub'))
-                markup.row(types.InlineKeyboardButton('⁞ أوكي 🌟', callback_data=f'show_countries_{service}_ok'))
-                markup.row(types.InlineKeyboardButton('⁞ لاين 📲', callback_data=f'show_countries_{service}_li'))
-                markup.row(types.InlineKeyboardButton('⁞ أمازون 🛒', callback_data=f'show_countries_{service}_am'))
+                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_wa_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_tg_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_fb_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_ig_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_tw_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_tt_page_1"))
+                markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_go_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_sn_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ ديسكورد 🎮', callback_data=f'show_countries_{service}_ds_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ تيندر ❤️', callback_data=f'show_countries_{service}_td_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ أوبر 🚕', callback_data=f'show_countries_{service}_ub_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ أوكي 🌟', callback_data=f'show_countries_{service}_ok_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ لاين 📲', callback_data=f'show_countries_{service}_li_page_1'))
+                markup.row(types.InlineKeyboardButton('⁞ أمازون 🛒', callback_data=f'show_countries_{service}_am_page_1'))
             
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
             server_name = 'سيرفر 1' if service == 'viotp' else ('سيرفر 2' if service == 'smsman' else 'سيرفر 3')
@@ -474,7 +568,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 active_requests = data_file.get('active_requests', {})
                 
                 app_name = "غير معروف"
-                if str(request_id) in active_requests: # استخدم str للتوافق
+                # 💡 استخدام str(request_id) لضمان التوافق مع المفتاح في MongoDB
+                if str(request_id) in active_requests: 
                     phone_number = active_requests[str(request_id)]['phone_number']
                     app_name = active_requests[str(request_id)].get('app_name', 'غير معروف')
                     
@@ -528,6 +623,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             
             elif service == 'smsman':
                 result = smsman_api['cancel_smsman_request'](request_id)
+                # قد يكون الرد نجاح حتى لو لم يكن نص الرسالة بالضبط ACCESS_CANCEL
                 if result and (result.get('message') == 'ACCESS_CANCEL' or result.get('status') == 'success' or result.get('status') == 'cancelled'):
                     success_api_call = True
             
@@ -542,7 +638,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             if success_api_call:
                 
                 # 💡 [استخدام الدالة الجديدة المرنة لضمان العثور على السعر]
-                # تم تحديث هذه الدالة لمعالجة تضارب نوع البيانات
                 request_info_from_purchases = get_cancellable_request_info(user_doc, request_id)
                 
                 if request_info_from_purchases:
@@ -550,7 +645,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         price_to_restore = request_info_from_purchases.get('price_to_restore', 0)
                         
                         if price_to_restore == 0:
-                            # إذا كان السعر صفراً، فهذا يشير إلى خطأ في تسجيل الطلب الأصلي.
                             raise ValueError("Price to restore is zero, refund aborted.")
 
                         # أ. استرجاع الرصيد للمستخدم
@@ -570,7 +664,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         # ج. إزالة الطلب من الطلبات النشطة (إذا كان موجوداً)
                         data_file = get_bot_data()
                         active_requests = data_file.get('active_requests', {})
-                        if str(request_id) in active_requests:
+                        # 💡 استخدام str(request_id) لضمان التوافق مع المفتاح في MongoDB
+                        if str(request_id) in active_requests: 
                             del active_requests[str(request_id)]
                             data_file['active_requests'] = active_requests
                             save_bot_data(data_file)
@@ -584,7 +679,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         
                 else:
                     # في هذه الحالة، فشلت الدالة الجديدة في العثور على الطلب في السجل.
-                    # نرسل الرسالة التحذيرية ونطلب من المستخدم التواصل.
                     bot.send_message(chat_id, f"⚠️ تم إلغاء طلبك في الموقع بنجاح، لكنه **غير مسجل كطلب معلق في سجل مشترياتك**. لم يتم إرجاع الرصيد تلقائياً. يرجى التواصل فوراً مع الدعم (@{ESM7AT}) وتقديم آيدي الطلب: `{request_id}`.", parse_mode='Markdown')
 
             else:
