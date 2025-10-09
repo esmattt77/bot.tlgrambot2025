@@ -24,7 +24,7 @@ except Exception as e:
 
 def get_user_doc(user_id):
     """
-    جلب مستند المستخدم بالكامل. (الدالة المفقودة التي سببت الخطأ)
+    جلب مستند المستخدم بالكامل.
     """
     return users_collection.find_one({"_id": str(user_id)})
 
@@ -38,7 +38,8 @@ def update_user_balance(user_id, amount, is_increment=True):
     if is_increment:
         update_op = {"$inc": {"balance": amount}}
     else:
-        update_op = {"$set": {"balance": amount}}
+        # إذا لم يكن is_increment، فهذا يعني ضبط القيمة (قد تكون دالة is_increment تستخدم $inc في الكود الأساسي)
+        update_op = {"$set": {"balance": amount}} 
         
     users_collection.update_one(
         {"_id": str(user_id)},
@@ -48,7 +49,7 @@ def update_user_balance(user_id, amount, is_increment=True):
 
 def register_user(user_id, first_name, username, new_purchase=None, update_purchase_status=None, delete_purchase_id=None):
     """
-    تسجيل/تحديث بيانات المستخدم ومعالجة سجل المشتريات. (الدالة المفقودة)
+    تسجيل/تحديث بيانات المستخدم ومعالجة سجل المشتريات.
     """
     user_id_str = str(user_id)
     
@@ -100,21 +101,37 @@ def get_all_users_keys():
 
 
 # ----------------------------------------------------------------
-# دوال بيانات البوت (الدول، States، الخدمات، إلخ) - تحل محل load_data و save_data
+# دوال بيانات البوت (الدول، States، الخدمات، إلخ) - تم التعديل على بنية الحفظ
 # ----------------------------------------------------------------
 
 def get_bot_data():
     """جلب جميع بيانات البوت (الدول، States، الأرقام الجاهزة)"""
+    # 💡 نبحث عن المستند bot_settings
     data_doc = data_collection.find_one({"_id": "bot_settings"})
     
-    default = {'countries': {}, 'states': {}, 'active_requests': {}, 'sh_services': {}, 'ready_numbers': []}
+    # 🆕 تم تحديث القيم الافتراضية لتشمل المخزون كقاموس (أفضل للبحث والتحديث)
+    default = {
+        'countries': {}, 
+        'states': {}, 
+        'active_requests': {}, 
+        'sh_services': {}, 
+        'ready_numbers_stock': {} # 👈 هذا هو الحقل الجديد لمخزون الأرقام الجاهزة
+    }
     
-    return data_doc.get("value", default) if data_doc else default
+    # 💡 إذا كان المستند موجودًا، نرجعه، وإلا نرجع القيم الافتراضية
+    # (نغير طريقة الإرجاع لتناسب بنية الحفظ الجديدة التي تستخدم حقول مباشرة بدلاً من حقل "value")
+    return data_doc if data_doc else default
 
 def save_bot_data(data_dict):
-    """حفظ جميع بيانات البوت"""
+    """
+    حفظ/تحديث بيانات البوت بشكل جزئي.
+    نستخدم $set لتحديث الحقول الممررة فقط بدلاً من استبدال المستند بالكامل.
+    """
+    if not data_dict:
+        return
+        
     data_collection.update_one(
         {"_id": "bot_settings"},
-        {"$set": {"value": data_dict}},
+        {"$set": data_dict}, # 💡 تم تعديل طريقة الحفظ لاستخدام التحديث الجزئي
         upsert=True
     )
