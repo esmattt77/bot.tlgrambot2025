@@ -3,6 +3,10 @@ import telebot.apihelper
 import json
 import time
 
+# *** مهم: يجب تحديد آيدي قناة الإشعارات هنا إذا كنت تريد نشر الإضافة تلقائيًا ***
+# SIM_CHANNEL_ID = -100xxxxxxxxxx # آيدي القناة الرقمي
+SIM_CHANNEL_ID = None # اتركه None إذا لم يكن لديك قناة للإشعارات
+
 # 💡 --- MongoDB IMPORTS ---
 from db_manager import (
     get_user_balance, 
@@ -18,7 +22,8 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
     # دالة مساعدة لتحديث الأرقام الجاهزة في المخزون الداخلي (تعتمد على save_bot_data)
     def update_ready_numbers_stock(stock_data=None, delete_key=None):
         data_file = get_bot_data()
-        stock = data_file.get('ready_numbers_stock', {})
+        # نستخدم ready_numbers_stock كاسم للحقل في db_manager.py
+        stock = data_file.get('ready_numbers_stock', {}) 
         
         if stock_data:
             # إضافة أو تحديث رقم
@@ -200,41 +205,99 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             except ValueError:
                 bot.send_message(chat_id, "❌ السعر غير صحيح. يرجى إدخال رقم صحيح أكبر من صفر.")
         
-        # 🆕 --- معالج إضافة رقم جاهز (الخطوة 2: استقبال الرقم) ---
-        elif state and state.get('step') == 'waiting_for_ready_number':
-            phone_number = message.text.strip()
-            if not phone_number.replace('+', '').isdigit():
-                bot.send_message(chat_id, "❌ صيغة الرقم غير صحيحة. يرجى إدخال الرقم (يمكن استخدام +).")
+        # 🆕 --- معالج إضافة رقم جاهز (الخطوة 2: استقبال جميع المعلومات) ---
+        elif state and state.get('step') == 'waiting_for_ready_number_full_info':
+            
+            # نفترض أن كل حقل مفصول بسطر جديد، ونحاول استخراج القيم
+            lines = message.text.strip().split('\n')
+            
+            # تنظيف السطور وإزالة الأرقام والرموز الزائدة
+            extracted_data = []
+            for line in lines:
+                # نحذف الأجزاء الثابتة مثل "1⃣ الاسم :-" (نفترض وجود ":-")
+                # إذا لم يكن هناك فاصل ":-" نأخذ السطر كما هو
+                if ":-" in line:
+                    clean_value = line.split(":-")[-1].strip()
+                else:
+                    clean_value = line.strip()
+
+                extracted_data.append(clean_value)
+
+            # يجب أن يكون لدينا 6 قيم على الأقل
+            if len(extracted_data) < 6:
+                bot.send_message(chat_id, "❌ لم تقم بإرسال جميع الحقول الستة بشكل صحيح. أعد المحاولة. (تأكد من فصل كل حقل بسطر جديد)", 
+                                 reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('رجوع', callback_data='ready_numbers_menu')))
                 return
             
-            data_file.setdefault('states', {})[str(user_id)] = {'step': 'waiting_for_ready_number_price', 'phone_number': phone_number}
-            save_bot_data({'states': data_file.get('states', {})}) 
-            bot.send_message(chat_id, f"تم حفظ الرقم: **{phone_number}**. الآن أرسل **سعر** بيع هذا الرقم بالروبل.", parse_mode='Markdown')
-
-        # 🆕 --- معالج إضافة رقم جاهز (الخطوة 3: استقبال السعر والحفظ) ---
-        elif state and state.get('step') == 'waiting_for_ready_number_price':
             try:
-                price = int(message.text)
+                # تعيين المتغيرات بناءً على ترتيب الإدخال
+                country, price_str, app_state, note, number, code = extracted_data[:6]
+                
+                price = int(price_str)
                 if price <= 0:
-                    raise ValueError
+                    raise ValueError("Price must be a positive integer.")
                 
-                phone_number = state.get('phone_number')
+                # تنظيف الرقم والتأكد من الصيغة
+                if not number.replace('+', '').isdigit() or len(number.replace('+', '')) < 8:
+                    raise ValueError("Phone number format is incorrect.")
                 
+                # إزالة المسافات من الكود
+                code = code.replace('-', '').strip()
+                
+                # 🔑 مفتاح التخزين في المخزون هو رقم الهاتف
+                stock_key = number
+                
+                # تحديث المخزون في قاعدة البيانات
                 update_ready_numbers_stock(stock_data={
-                    phone_number: {
-                        'number': phone_number,
+                    stock_key: {
+                        'country': country,
                         'price': price,
+                        'state': app_state, # حالة الرقم (واتساب، تيليجرام...)
+                        'note': note,
+                        'number': number,
+                        'code': code,
                         'added_by': str(user_id),
                         'added_date': time.time()
                     }
                 })
                 
+                # حذف الحالة من المشرف
                 del data_file['states'][str(user_id)]
                 save_bot_data({'states': data_file.get('states', {})}) 
-                bot.send_message(chat_id, f"✅ تم إضافة الرقم الجاهز **{phone_number}** بسعر **{price}** روبل إلى المخزون بنجاح!", parse_mode='Markdown')
                 
-            except ValueError:
-                bot.send_message(chat_id, "❌ السعر الذي أدخلته غير صحيح. يرجى إدخال رقم صحيح أكبر من صفر.")
+                # 🔔 إرسال إشعار للمشرف
+                num_hidden = number[:len(number) - 4] + "••••"
+                message_to_admin = (
+                    f"✅ تم إضافة رقم جاهز بنجاح:\n\n"
+                    f"☎️ ⪼ الدولة: {country}\n"
+                    f"💸 ⪼ السعر: {price} روبل\n"
+                    f"☎️ ⪼ الرقم: {num_hidden}\n"
+                    f"✳️ ⪼ الحالة: *{app_state}*"
+                )
+                
+                bot.send_message(chat_id, message_to_admin, 
+                                          parse_mode='Markdown',
+                                          reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('رجوع', callback_data='ready_numbers_menu')))
+                
+                # 📢 إرسال إشعار للقناة إذا تم تعيينها
+                if SIM_CHANNEL_ID:
+                    message_to_channel = (
+                        f"*⌯ تم إضافة رقم جديد الى الأرقام الجاهزة! ☑️*\n\n"
+                        f"☎️ ⪼ الدولة: {country}\n"
+                        f"💸 ⪼ السعر: ₽ {price}.00\n"
+                        f"☎️ ⪼ الرقم: {num_hidden}\n"
+                        f"✳️ ⪼ الحالة: *{app_state}*"
+                    )
+                    bot.send_message(SIM_CHANNEL_ID, message_to_channel, parse_mode='Markdown')
+                
+            except ValueError as e:
+                error_message = f"❌ خطأ في الإدخال. يرجى التأكد من أن السعر رقم صحيح والرقم بصيغة صحيحة. ({e})"
+                bot.send_message(chat_id, error_message, 
+                                 reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('رجوع', callback_data='ready_numbers_menu')))
+            except Exception as e:
+                bot.send_message(chat_id, f"❌ حدث خطأ غير متوقع أثناء الحفظ: {e}", 
+                                 reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('رجوع', callback_data='ready_numbers_menu')))
+        
 
     @bot.callback_query_handler(func=lambda call: call.from_user.id == DEVELOPER_ID)
     def handle_admin_callbacks(call):
@@ -653,23 +716,34 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🔢 إدارة مخزون الأرقام الجاهزة يدوياً:", reply_markup=markup)
 
-        # 🆕 --- بدء عملية إضافة رقم جاهز (الخطوة 1: تحديد الحالة) - **تم تصحيح المشكلة هنا**
+        # 🆕 --- بدء عملية إضافة رقم جاهز (الخطوة 1: تحديد الحالة) - تم التصحيح هنا
         elif data == 'add_ready_number_start':
             data_file.setdefault('states', {}) # ✅ ضمان وجود مفتاح states
-            data_file['states'][str(user_id)] = {'step': 'waiting_for_ready_number'}
+            # 💡 تغيير اسم الحالة ليعكس أننا ننتظر جميع البيانات
+            data_file['states'][str(user_id)] = {'step': 'waiting_for_ready_number_full_info'}
             save_bot_data({'states': data_file.get('states', {})})
+            
+            message_prompt = (
+                "🔰 - أرسل معلومات الرقم الجاهز بالصيغة التالية (في أسطر متتالية):\n\n"
+                "1⃣ الاسم (الدولة/البلد) :-\n"
+                "2⃣ السعر :-\n"
+                "3⃣ الحالة (واتساب/تيليجرام) :-\n"
+                "4⃣ ملاحظة :-\n"
+                "5⃣ الرقم :-\n"
+                "6⃣ الكود :-\n\n"
+                "⚠️ - بعد إرسال الرقم سيتم إضافته مباشرة."
+            )
             
             # محاولة تعديل الرسالة
             try:
                 bot.edit_message_text(
                     chat_id=chat_id, 
                     message_id=message_id, 
-                    text="📲 يرجى إرسال **رقم الهاتف الجاهز** الذي تريد إضافته للمخزون (بما في ذلك رمز الدولة).",
-                    reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('إلغاء', callback_data='ready_numbers_menu'))
+                    text=message_prompt,
+                    reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('رجوع', callback_data='ready_numbers_menu'))
                 )
             except telebot.apihelper.ApiTelegramException:
-                # إذا كانت غير قابلة للتعديل، نرسلها كرسالة جديدة
-                bot.send_message(chat_id, "📲 يرجى إرسال **رقم الهاتف الجاهز** الذي تريد إضافته للمخزون (بما في ذلك رمز الدولة).", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('إلغاء', callback_data='ready_numbers_menu')))
+                bot.send_message(chat_id, message_prompt, reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('رجوع', callback_data='ready_numbers_menu')))
         
         # 🆕 --- عرض الأرقام الجاهزة في المخزون ---
         elif data == 'view_ready_numbers_stock':
@@ -680,8 +754,14 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             else:
                 message = "📄 **الأرقام الجاهزة في المخزون:**\n\n"
                 for phone, info in ready_numbers_stock.items():
-                    message += f"• **الرقم:** `{info.get('number', 'غير متوفر')}`\n"
+                    # إخفاء آخر 4 أرقام
+                    num_hidden = info.get('number', 'غير متوفر')[:len(info.get('number', '')) - 4] + "••••"
+                    message += f"• **الرقم:** `{num_hidden}`\n"
                     message += f"• **السعر:** `{info.get('price', 0)}` روبل\n"
+                    message += f"• **الدولة:** `{info.get('country', 'غير متوفر')}`\n"
+                    message += f"• **الحالة:** `{info.get('state', 'غير متوفر')}`\n"
+                    message += f"• **الملاحظة:** `{info.get('note', 'لا يوجد')}`\n"
+                    message += f"• **الكود (للمشرف):** `{info.get('code', 'غير متوفر')}`\n"
                     message += f"• **أضيف بواسطة:** `{info.get('added_by', 'مشرف')}`\n"
                     message += "-------------------\n"
             
@@ -699,7 +779,9 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
 
             markup = types.InlineKeyboardMarkup()
             for phone, info in ready_numbers_stock.items():
-                markup.add(types.InlineKeyboardButton(f"❌ {phone} ({info.get('price', 0)} روبل)", callback_data=f'confirm_delete_ready_{phone}'))
+                # عرض جزء من الرقم والسعر فقط
+                num_hidden = phone[:len(phone) - 4] + "••••"
+                markup.add(types.InlineKeyboardButton(f"❌ {num_hidden} ({info.get('price', 0)} روبل)", callback_data=f'confirm_delete_ready_{phone}'))
             
             markup.add(types.InlineKeyboardButton('رجوع', callback_data='ready_numbers_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر الرقم الذي تريد حذفه من المخزون:", reply_markup=markup)
@@ -708,7 +790,9 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
         elif data.startswith('confirm_delete_ready_'):
             phone_to_delete = data.split('_', 2)[-1]
             update_ready_numbers_stock(delete_key=phone_to_delete)
-            bot.send_message(chat_id, f"✅ تم حذف الرقم الجاهز **{phone_to_delete}** من المخزون بنجاح.")
+            # إخفاء آخر 4 أرقام
+            num_hidden = phone_to_delete[:len(phone_to_delete) - 4] + "••••"
+            bot.send_message(chat_id, f"✅ تم حذف الرقم الجاهز **{num_hidden}** من المخزون بنجاح.")
             
             # إعادة عرض قائمة الحذف المحدثة
             ready_numbers_stock = get_bot_data().get('ready_numbers_stock', {})
