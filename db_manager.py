@@ -1,4 +1,3 @@
-# db_manager.py
 from pymongo import MongoClient
 import time
 
@@ -15,8 +14,9 @@ try:
     
     print("MongoDB connection established successfully.")
 except Exception as e:
+    # 💡 يجب التعامل مع فشل الاتصال بخروج أو تسجيل (log) مناسب
     print(f"ERROR: Failed to connect to MongoDB: {e}")
-
+    # يمكنك إضافة sys.exit(1) هنا لإيقاف البوت إذا فشل الاتصال بالقاعدة
 
 # ----------------------------------------------------------------
 # دوال المستخدمين (الأرصدة والمستندات)
@@ -24,7 +24,7 @@ except Exception as e:
 
 def get_user_doc(user_id):
     """
-    جلب مستند المستخدم بالكامل. (الدالة المفقودة التي سببت الخطأ)
+    جلب مستند المستخدم بالكامل.
     """
     return users_collection.find_one({"_id": str(user_id)})
 
@@ -35,20 +35,24 @@ def get_user_balance(user_id):
 
 def update_user_balance(user_id, amount, is_increment=True):
     """تحديث (إضافة/خصم) رصيد المستخدم"""
+    user_id_str = str(user_id)
+    
     if is_increment:
+        # يستخدم $inc لزيادة أو إنقاص الرصيد (مقدار سالب)
         update_op = {"$inc": {"balance": amount}}
     else:
+        # يستخدم $set لضبط قيمة الرصيد
         update_op = {"$set": {"balance": amount}}
         
     users_collection.update_one(
-        {"_id": str(user_id)},
-        {**update_op, "$set": {"id": str(user_id)}},
+        {"_id": user_id_str},
+        {**update_op, "$set": {"id": user_id_str}},
         upsert=True
     )
 
 def register_user(user_id, first_name, username, new_purchase=None, update_purchase_status=None, delete_purchase_id=None):
     """
-    تسجيل/تحديث بيانات المستخدم ومعالجة سجل المشتريات. (الدالة المفقودة)
+    تسجيل/تحديث بيانات المستخدم ومعالجة سجل المشتريات.
     """
     user_id_str = str(user_id)
     
@@ -71,7 +75,6 @@ def register_user(user_id, first_name, username, new_purchase=None, update_purch
             {"_id": user_id_str, "purchases.request_id": update_purchase_status['request_id']},
             {"$set": {"purchases.$.status": update_purchase_status['status']}}
         )
-        # لا نتابع باقي التحديثات لأننا قمنا بتحديث منفصل
         return
 
     # حذف سجل شراء موجود (إلغاء الطلب)
@@ -100,21 +103,41 @@ def get_all_users_keys():
 
 
 # ----------------------------------------------------------------
-# دوال بيانات البوت (الدول، States، الخدمات، إلخ) - تحل محل load_data و save_data
+# دوال بيانات البوت (الإعدادات العامة - الدول، States، الخدمات، الأرقام الجاهزة)
 # ----------------------------------------------------------------
 
 def get_bot_data():
-    """جلب جميع بيانات البوت (الدول، States، الأرقام الجاهزة)"""
+    """جلب جميع بيانات البوت (الدول، States، الأرقام الجاهزة، إلخ) من المستند bot_settings"""
     data_doc = data_collection.find_one({"_id": "bot_settings"})
     
-    default = {'countries': {}, 'states': {}, 'active_requests': {}, 'sh_services': {}, 'ready_numbers': []}
+    # 💡 تحديث القيم الافتراضية لتشمل المخزون الجديد
+    default = {
+        'countries': {}, 
+        'states': {}, 
+        'active_requests': {}, 
+        'sh_services': {}, 
+        'ready_numbers_stock': {} # 🆕 المخزون الجديد سيكون كائن/ديكشنري
+    }
     
-    return data_doc.get("value", default) if data_doc else default
+    # نحفظ البيانات كحقول مباشرة في المستند بدلاً من داخل حقل "value" كما كان في السابق
+    return data_doc if data_doc else default
 
 def save_bot_data(data_dict):
-    """حفظ جميع بيانات البوت"""
+    """
+    حفظ/تحديث بيانات البوت بشكل جزئي (مهم للتزامن).
+    نمرر فقط الحقول التي نريد تحديثها في data_dict.
+    """
+    if not data_dict:
+        return
+        
+    # نستخدم $set لتحديث الحقول الممررة فقط
     data_collection.update_one(
         {"_id": "bot_settings"},
-        {"$set": {"value": data_dict}},
+        {"$set": data_dict},
         upsert=True
     )
+    
+# ----------------------------------------------------------------
+# 🚫 دوال الأرقام الجاهزة القديمة محذوفة (get_ready_numbers_stock, update_ready_numbers_stock)
+# تم دمج عملها في دالتي get_bot_data و save_bot_data
+# ----------------------------------------------------------------
