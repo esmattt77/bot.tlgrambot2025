@@ -22,7 +22,7 @@ from db_manager import (
 
 def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
     
-    # 💡 [التعديل الحاسم لضمان استرجاع الرصيد] دالة مساعدة مرنة للبحث عن الطلب في سجل المشتريات
+    # 💡 [التصحيح الحاسم لضمان استرجاع الرصيد] دالة مساعدة مرنة للبحث عن الطلب في سجل المشتريات
     def get_cancellable_request_info(user_doc, request_id):
         purchases = user_doc.get('purchases', [])
         for p in purchases:
