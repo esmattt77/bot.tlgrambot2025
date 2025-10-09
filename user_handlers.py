@@ -22,12 +22,13 @@ from db_manager import (
 
 def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
     
-    # 💡 دالة مساعدة لجلب معلومات طلب الإلغاء من سجل المشتريات
+    # 💡 [التعديل الحاسم لضمان استرجاع الرصيد] دالة مساعدة مرنة للبحث عن الطلب في سجل المشتريات
     def get_cancellable_request_info(user_doc, request_id):
         purchases = user_doc.get('purchases', [])
         for p in purchases:
-            # يجب أن يكون الطلب معلقاً (pending)
-            if p.get('request_id') == request_id and p.get('status') == 'pending':
+            # نبحث بالآيدي فقط، ونتجاهل الطلب إذا كان مكتملًا أو ملغيًا بالفعل.
+            # هذا يضمن سحب السعر حتى لو لم تكن حالته "pending" لأي سبب.
+            if p.get('request_id') == request_id and p.get('status') not in ['completed', 'cancelled']:
                 return {
                     'user_id': user_doc.get('_id'),
                     'price_to_restore': p.get('price', 0)
@@ -41,7 +42,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         first_name = message.from_user.first_name
         username = message.from_user.username
         
-        # 💡 تسجيل/تحديث بيانات المستخدم في MongoDB
         register_user(user_id, first_name, username)
 
         if message.text in ['/start', 'start/', 'بدء/']:
@@ -49,7 +49,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             return
 
         elif message.text in ['/balance', 'رصيدي']:
-            # 💡 جلب معلومات المستخدم من MongoDB
             user_doc = get_user_doc(user_id)
             balance = user_doc.get('balance', 0) if user_doc else 0
             bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
@@ -65,7 +64,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
         markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
         
-        # 💡 النص الترحيبي الجديد المطلوب
         text = f"مرحباً بك في *بوت الأسطورة لخدمات الأرقام الافتراضية*.\n\n☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*"
         
         if message_id:
@@ -85,7 +83,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         message_id = call.message.message_id
         data = call.data
         
-        # 💡 التحميل من MongoDB
         data_file = get_bot_data()
         user_doc = get_user_doc(user_id)
         user_balance = user_doc.get('balance', 0) if user_doc else 0
@@ -95,7 +92,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             return
         
         elif data == 'Payment':
-            # 💡 [تعديل] عرض طرق الشحن الجديدة
+            # 💡 [طرق شحن جديدة]
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('💳 كريمي كول', callback_data='pay_karemi'))
             markup.row(types.InlineKeyboardButton('📱 محفظة جوالي', callback_data='pay_jawali'))
@@ -500,7 +497,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                             f"**الخدمة:** تم التفعيل بنجاح! ✅\n\n"
                             f"اشترِ رقمك الافتراضي الآن من @{EESSMT}"
                         )
-                        # نستخدم @EESSMT مباشرةً كآيدي للقناة
                         bot.send_message(f'@{EESSMT}', promo_message, parse_mode='Markdown')
                         logging.info(f"Sent promo message to @{EESSMT} for Req ID {request_id}")
                     except Exception as e:
@@ -539,15 +535,14 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             
             logging.info(f"Response from {service} for CANCEL Req ID {request_id}: {result}")
             
-            # 2. إذا نجح الإلغاء في API، ننتقل لمعالجة الرصيد في البوت
+            # 2. إذا نجح الإلغاء في API، ننتقل لمعالجة الرصيد
             if success_api_call:
                 
-                # 💡 [التصحيح الحاسم] البحث عن معلومات الطلب في سجل المشتريات
+                # 💡 [استخدام الدالة الجديدة المرنة لضمان العثور على السعر]
                 request_info_from_purchases = get_cancellable_request_info(user_doc, request_id)
                 
                 if request_info_from_purchases:
                     try:
-                        # 💡 سحب السعر بشكل صحيح من الدالة المساعدة
                         price_to_restore = request_info_from_purchases.get('price_to_restore', 0)
                         
                         if price_to_restore == 0:
@@ -583,8 +578,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         bot.send_message(chat_id, f"⚠️ تم إلغاء طلبك في الموقع، ولكن حدث **خطأ أثناء استرجاع رصيدك**. يرجى التواصل مع الدعم (@{ESM7AT}) وذكر آيدي الطلب: `{request_id}`.", parse_mode='Markdown')
                         
                 else:
-                    # هذه الكتلة لن تمنع الإرجاع بعد الآن وستظهر رسالة توضيحية للمستخدم
-                    bot.send_message(chat_id, "⚠️ تم إلغاء طلبك في الموقع، لكنه **لم يكن مسجلاً كطلب معلق** في قاعدة البيانات لدينا. يرجى مراجعة رصيدك للتأكد من استرجاع المبلغ، وإذا لم يسترجع، يرجى التواصل مع الدعم.", parse_mode='Markdown')
+                    # 💡 [رسالة خطأ مصححة] عند فشل العثور على الطلب في سجل المشتريات رغم نجاح الإلغاء الخارجي
+                    bot.send_message(chat_id, f"⚠️ تم إلغاء طلبك في الموقع بنجاح، لكنه **غير مسجل كطلب معلق في سجل مشترياتك**. لم يتم إرجاع الرصيد تلقائياً. يرجى التواصل فوراً مع الدعم (@{ESM7AT}) وتقديم آيدي الطلب: `{request_id}`.", parse_mode='Markdown')
 
             else:
                 # هذا الرد في حالة فشل الإلغاء في API الموقع
