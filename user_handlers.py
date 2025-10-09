@@ -22,13 +22,16 @@ from db_manager import (
 
 def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client):
     
-    # 💡 [التصحيح الحاسم لضمان استرجاع الرصيد] دالة مساعدة مرنة للبحث عن الطلب في سجل المشتريات
+    # 💡 [التصحيح النهائي لنوع البيانات] دالة مساعدة مرنة للبحث عن الطلب في سجل المشتريات
     def get_cancellable_request_info(user_doc, request_id):
         purchases = user_doc.get('purchases', [])
+        # تحويل request_id من الكولباك إلى سلسلة نصية لضمان التوافق في المقارنة
+        request_id_str = str(request_id) 
+        
         for p in purchases:
-            # نبحث بالآيدي فقط، ونتجاهل الطلب إذا كان مكتملًا أو ملغيًا بالفعل.
-            # هذا يضمن سحب السعر حتى لو لم تكن حالته "pending" لأي سبب.
-            if p.get('request_id') == request_id and p.get('status') not in ['completed', 'cancelled']:
+            # مقارنة كل من معرف الطلب المخزن والمعرف من الكولباك كسلسلة نصية (str)
+            # لتجنب خطأ عدم تطابق الأنواع (String vs Integer).
+            if str(p.get('request_id')) == request_id_str and p.get('status') not in ['completed', 'cancelled']:
                 return {
                     'user_id': user_doc.get('_id'),
                     'price_to_restore': p.get('price', 0)
@@ -471,11 +474,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 active_requests = data_file.get('active_requests', {})
                 
                 app_name = "غير معروف"
-                if request_id in active_requests:
-                    phone_number = active_requests[request_id]['phone_number']
-                    app_name = active_requests[request_id].get('app_name', 'غير معروف')
+                if str(request_id) in active_requests: # استخدم str للتوافق
+                    phone_number = active_requests[str(request_id)]['phone_number']
+                    app_name = active_requests[str(request_id)].get('app_name', 'غير معروف')
                     
-                    del active_requests[request_id]
+                    del active_requests[str(request_id)]
                     data_file['active_requests'] = active_requests
                     save_bot_data(data_file)
 
@@ -539,6 +542,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             if success_api_call:
                 
                 # 💡 [استخدام الدالة الجديدة المرنة لضمان العثور على السعر]
+                # تم تحديث هذه الدالة لمعالجة تضارب نوع البيانات
                 request_info_from_purchases = get_cancellable_request_info(user_doc, request_id)
                 
                 if request_info_from_purchases:
@@ -546,6 +550,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         price_to_restore = request_info_from_purchases.get('price_to_restore', 0)
                         
                         if price_to_restore == 0:
+                            # إذا كان السعر صفراً، فهذا يشير إلى خطأ في تسجيل الطلب الأصلي.
                             raise ValueError("Price to restore is zero, refund aborted.")
 
                         # أ. استرجاع الرصيد للمستخدم
@@ -565,8 +570,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         # ج. إزالة الطلب من الطلبات النشطة (إذا كان موجوداً)
                         data_file = get_bot_data()
                         active_requests = data_file.get('active_requests', {})
-                        if request_id in active_requests:
-                            del active_requests[request_id]
+                        if str(request_id) in active_requests:
+                            del active_requests[str(request_id)]
                             data_file['active_requests'] = active_requests
                             save_bot_data(data_file)
                         
@@ -578,7 +583,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         bot.send_message(chat_id, f"⚠️ تم إلغاء طلبك في الموقع، ولكن حدث **خطأ أثناء استرجاع رصيدك**. يرجى التواصل مع الدعم (@{ESM7AT}) وذكر آيدي الطلب: `{request_id}`.", parse_mode='Markdown')
                         
                 else:
-                    # 💡 [رسالة خطأ مصححة] عند فشل العثور على الطلب في سجل المشتريات رغم نجاح الإلغاء الخارجي
+                    # في هذه الحالة، فشلت الدالة الجديدة في العثور على الطلب في السجل.
+                    # نرسل الرسالة التحذيرية ونطلب من المستخدم التواصل.
                     bot.send_message(chat_id, f"⚠️ تم إلغاء طلبك في الموقع بنجاح، لكنه **غير مسجل كطلب معلق في سجل مشترياتك**. لم يتم إرجاع الرصيد تلقائياً. يرجى التواصل فوراً مع الدعم (@{ESM7AT}) وتقديم آيدي الطلب: `{request_id}`.", parse_mode='Markdown')
 
             else:
