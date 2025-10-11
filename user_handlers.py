@@ -4,9 +4,9 @@ import time
 import logging
 import telebot.apihelper
 import random 
-from datetime import datetime
-import re
-import pytz # تم إضافة استيراد المكتبات الناقصة (pytz, re, datetime)
+from datetime import datetime # 💡 تم إضافة استيراد المكتبة
+import re # 💡 تم إضافة استيراد المكتبة
+import pytz # 💡 تم إضافة استيراد المكتبة
 
 # تهيئة نظام التسجيل
 logging.basicConfig(
@@ -15,7 +15,6 @@ logging.basicConfig(
 )
 
 # 💡 --- MongoDB IMPORTS ---
-# يجب أن يكون ملف db_manager.py موجوداً في نفس المجلد
 from db_manager import (
     get_user_doc,
     update_user_balance,
@@ -344,7 +343,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             except telebot.apihelper.ApiTelegramException as e:
                 # إذا فشل إرسال الرسالة، لن يتم خصم الرصيد ولن يتم تحديث MongoDB
                 logging.error(f"Failed to send Ready Number message (Req ID: {idnums}). Reverting purchase. Error: {e}")
-                # هنا، بما أن الخصم لم يتم (لأنه تم نقله بعد الإرسال)، يكفي إرسال رسالة خطأ
                 
                 # إشعار للمطور بالخطأ الحرج
                 bot.send_message(DEVELOPER_ID, 
@@ -498,7 +496,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='Buynum'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر الدولة التي تريدها: (صفحة {page}/{total_pages})", reply_markup=markup)
 
-        # 💡 [معالج الشراء - تم تعديله لإظهار زر التحديث اليدوي]
+        # 💡 [بداية التعديل الأساسي: معالج الشراء]
         elif data.startswith('buy_'):
             parts = data.split('_')
             service, app_id, country_code = parts[1], parts[2], parts[3]
@@ -515,14 +513,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             # *** 1. الاتصال بالـ API وجلب الرقم ***
             result = None
             if service == 'viotp':
-                # يجب استبدال buy_number بالدالة الصحيحة التي تستخدم country_code و app_id
                 result = viotp_client.buy_number(app_id, country_code) 
             elif service == 'smsman':
-                # يجب التأكد من أن country_code هو الكود الصحيح المطلوب من smsman
                 result = smsman_api['request_smsman_number'](app_id, country_code)
                 if result and 'request_id' in result:
                     result['success'] = True
-                    result['id'] = str(result['request_id']) # 💡 تحويل إلى نص
+                    result['id'] = str(result['request_id'])
                     result['number'] = result['Phone']
             elif service == 'tigersms':
                 result = tiger_sms_client.get_number(app_id, country_code)
@@ -530,7 +526,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             logging.info(f"Response from {service}: {result}")
 
             if result and result.get('success'):
-                # 💡 يجب التأكد أن request_id هو سلسلة نصية (str)
                 request_id = str(result.get('id', result.get('request_id', random.randint(100000000, 999999999)))) 
                 phone_number = result.get('number', result.get('Phone', 'غير متوفر'))
                 
@@ -542,12 +537,13 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 markup.row(types.InlineKeyboardButton('♻️ - تحديث (جلب الكود)', callback_data=f'Code_{service}_{request_id}'))
                 # 💡 زر الإلغاء
                 markup.row(types.InlineKeyboardButton('❌ إلغاء الطلب', callback_data=f'cancel_{service}_{request_id}'))
-                # 💡 زر تغيير الرقم (يفترض أن لديك منطقاً له)
+                # 💡 زر تغيير الرقم 
                 markup.row(types.InlineKeyboardButton('🔄 - تغيير رقم آخر.', callback_data=f'ChangeNumber_{service}_{app_id}_{country_code}'))
 
                 app_name = country_info.get('name', 'غير معروف')
                 country_name = country_info.get('name', 'غير معروف')
                 
+                # 💡 استخدام التوقيت المحلي لزيادة الدقة
                 tz = pytz.timezone('Asia/Aden') 
                 current_time = datetime.now(tz).strftime('%I:%M:%S %p')
                 
@@ -576,7 +572,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     user_doc.get('first_name'), 
                     user_doc.get('username'), 
                     new_purchase={
-                        'request_id': request_id, # يتم تخزينها كسلسلة نصية
+                        'request_id': request_id, 
                         'phone_number': phone_number,
                         'service': service,
                         'price': price,
@@ -589,7 +585,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 # حفظ الطلب في active_requests لسهولة الوصول إليه
                 data_file = get_bot_data()
                 active_requests = data_file.get('active_requests', {})
-                active_requests[request_id] = { # يتم تخزينها كسلسلة نصية
+                active_requests[request_id] = { 
                     'user_id': user_id,
                     'phone_number': phone_number,
                     'status': 'pending',
@@ -604,7 +600,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             else:
                 bot.send_message(chat_id, "❌ فشل طلب الرقم. قد يكون غير متوفر أو أن رصيدك في الخدمة غير كافٍ.")
                 
-        # ❌ [تم حذف معالج get_otp_]
+        # ❌ [تم حذف معالج get_otp_ القديم بالكامل]
         
         # 💡 [المعالج الجديد: التحديث اليدوي للكود]
         elif data.startswith('Code_'):
@@ -624,7 +620,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             if service_name == 'viotp':
                 result = viotp_client.get_otp(request_id)
             elif service_name == 'smsman':
-                # يفترض أن هذه الدالة ترجع قاموساً يحتوي على 'code' أو 'success': False
                 result = smsman_api['get_smsman_code'](request_id) 
             elif service_name == 'tigersms':
                 result = tiger_sms_client.get_code(request_id)
@@ -646,7 +641,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 # تعديل الرسالة الأصلية لوضع علامة (مكتمل) وإزالة الأزرار
                 try:
                     new_text = call.message.text.replace("••• Pending", "✅ Completed")
-                    # إزالة رسائل التحقق السابقة
+                    # 💡 حذف رسائل التحقق السابقة باستخدام مكتبة re
                     new_text = re.sub(r'\n\*تم التحقق الآن في .+\*\n', '', new_text) 
                     
                     bot.edit_message_text(
@@ -660,12 +655,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 
                 data_file = get_bot_data()
                 if request_id in data_file.get('active_requests', {}):
-                    del data_file['active_requests'][request_id]
-                    save_bot_data(data_file)
+                    active_request_info = data_file['active_requests'].pop(request_id) # استخدام .pop لحذف العنصر والحصول عليه
+                    save_bot_data({'active_requests': data_file['active_requests']})
                 
                 # 💡 إرسال المنشور الترويجي إلى القناة
                 try:
-                    active_request_info = data_file.get('active_requests', {}).get(request_id, {})
                     app_name = active_request_info.get('app_name', 'غير معروف')
                     promo_message = (
                         f"🎉 *تم شراء رقم جديد بنجاح!* 🎉\n\n"
