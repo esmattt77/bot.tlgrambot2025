@@ -27,13 +27,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
     def get_ready_numbers_stock():
         return get_bot_data().get('ready_numbers_stock', {})
 
-    # 💡 [التصحيح النهائي والقاطع لضمان استرجاع الرصيد] دالة مساعدة مرنة للبحث عن الطلب في سجل المشتريات
+    # 💡 [التصحيح النهائي لمرونة المطابقة] دالة مساعدة مرنة للبحث عن الطلب في سجل المشتريات
     def get_cancellable_request_info(user_doc, request_id):
         purchases = user_doc.get('purchases', [])
         # تحويل request_id القادم من الكولباك إلى سلسلة نصية
         request_id_str = str(request_id) 
         
-        # محاولة تحويله إلى رقم صحيح إذا كان ممكناً للمقارنة
         try:
             request_id_int = int(request_id_str) 
         except ValueError:
@@ -42,17 +41,18 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         for p in purchases:
             p_request_id = p.get('request_id')
 
-            # التحقق من المطابقة: نقارن معرف الطلب المخزن بالصيغتين (نص ورقم)
-            # ونضمن أن الحالة ليست مكتملة أو ملغاة مسبقاً
             is_match = False
-            # 1. محاولة المطابقة كسلسلة نصية (الأكثر شيوعًا بعد التعديلات)
+            # 1. محاولة المطابقة كسلسلة نصية
             if str(p_request_id) == request_id_str:
                 is_match = True
-            # 2. محاولة المطابقة كرقم صحيح (حالة الطلبات القديمة أو خدمات معينة)
-            elif request_id_int is not None and p_request_id == request_id_int:
+            # 2. محاولة المطابقة كرقم صحيح (في حال تم تخزينه كرقم في الماضي)
+            elif request_id_int is not None and str(p_request_id) == str(request_id_int):
                 is_match = True
             
-            if is_match and p.get('status') not in ['completed', 'cancelled']:
+            # حالة الطلب لا يجب أن تكون مكتملة أو ملغاة مسبقاً
+            if is_match and p.get('status') not in ['completed', 'cancelled', 'ready_number_purchased']: 
+                # الطلبات الجاهزة لها حالة خاصة لا تحتاج للإلغاء في API
+                
                 # وجدنا الطلب، نُعيد معلوماته لاسترجاع الرصيد
                 return {
                     'user_id': user_doc.get('_id'),
@@ -282,42 +282,13 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية. رصيدك الحالي: {user_balance}*", parse_mode='Markdown')
                 return
 
-            # 1. تنفيذ الخصم
-            update_user_balance(user_id, -price, is_increment=True)
-            
-            # 2. إزالة الرقم من المخزون وحفظ التعديل
-            data_file = get_bot_data()
-            if number_key in data_file.get('ready_numbers_stock', {}):
-                del data_file['ready_numbers_stock'][number_key] 
-                save_bot_data({'ready_numbers_stock': data_file['ready_numbers_stock']})
-            
-            # 3. تسجيل عملية الشراء (استخدام رقم عشوائي كـ ID)
-            # 💡 توليد رقم معاملة فريد
+            # 💡 [تصحيح المشكلة الثانية] - 1. بناء الرسالة أولاً
             idnums = random.randint(100000, 999999) 
-            register_user(
-                user_id,
-                user_doc.get('first_name'), 
-                user_doc.get('username'), 
-                new_purchase={
-                    'request_id': str(idnums), # 💡 يتم تخزين request_id كسلسلة نصية
-                    'phone_number': number_key,
-                    'app': number_data.get('state', 'جاهز'),
-                    'price': price,
-                    'status': 'ready_number_purchased',
-                    'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
-                }
-            )
-
-            # 4. تحديث الرصيد المتبقي
-            new_user_doc = get_user_doc(user_id)
-            remaining_balance = new_user_doc.get('balance', 0)
-
-            # 5. إرسال رسالة الإيصال بالصيغة المطلوبة
             number = number_key
             code = number_data.get('code', 'غير متوفر (يرجى التواصل مع الدعم)')
             what = number_data.get('note', 'لا توجد ملاحظة')
+            remaining_balance = user_balance - price
             
-            # استخدام الصيغة النصية المطلوبة
             message_text = (
                 f"☑️ *- تم شراء الرقم بنجاح* 🙂🖤\n\n"
                 f"📞 > الرقم : *{number}*\n"
@@ -331,15 +302,58 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 f"💸"
             )
             
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown')
+            try:
+                # 💡 [تصحيح المشكلة الثانية] - 2. محاولة إرسال رسالة الإيصال (إذا نجح الإرسال، ننتقل للخصم)
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown')
+                
+                # 💡 [تصحيح المشكلة الثانية] - 3. تنفيذ الخصم وتحديث قاعدة البيانات
+                update_user_balance(user_id, -price, is_increment=True)
+                
+                # 4. إزالة الرقم من المخزون وحفظ التعديل
+                data_file = get_bot_data()
+                if number_key in data_file.get('ready_numbers_stock', {}):
+                    del data_file['ready_numbers_stock'][number_key] 
+                    save_bot_data({'ready_numbers_stock': data_file['ready_numbers_stock']})
+                
+                # 5. تسجيل عملية الشراء
+                register_user(
+                    user_id,
+                    user_doc.get('first_name'), 
+                    user_doc.get('username'), 
+                    new_purchase={
+                        'request_id': str(idnums), # يتم تخزين request_id كسلسلة نصية
+                        'phone_number': number_key,
+                        'app': number_data.get('state', 'جاهز'),
+                        'price': price,
+                        'status': 'ready_number_purchased', # حالة خاصة للطلبات المكتملة
+                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+                    }
+                )
+                
+                # إشعار للمطور
+                bot.send_message(DEVELOPER_ID, 
+                                 f"🔔 *تم بيع رقم جاهز!*\n"
+                                 f"*الرقم:* `{number}`\n"
+                                 f"*السعر:* `{price}` روبل\n"
+                                 f"*للمستخدم:* `@{user_doc.get('username', 'غير متوفر')}`", 
+                                 parse_mode='Markdown')
+
+            except telebot.apihelper.ApiTelegramException as e:
+                # إذا فشل إرسال الرسالة، لن يتم خصم الرصيد ولن يتم تحديث MongoDB
+                logging.error(f"Failed to send Ready Number message (Req ID: {idnums}). Reverting purchase. Error: {e}")
+                # هنا، بما أن الخصم لم يتم (لأنه تم نقله بعد الإرسال)، يكفي إرسال رسالة خطأ
+                
+                # إشعار للمطور بالخطأ الحرج
+                bot.send_message(DEVELOPER_ID, 
+                                 f"🚨 *فشل حرج في بيع رقم جاهز!* لم يتم خصم الرصيد. يجب التحقق.\n"
+                                 f"*رقم الهاتف:* `{number_key}`\n"
+                                 f"*للمستخدم:* `{user_id}`\n"
+                                 f"*الخطأ:* {e}", 
+                                 parse_mode='Markdown')
+                
+                # إرسال رسالة خطأ للمستخدم
+                bot.send_message(chat_id, "❌ *فشل إتمام عملية الشراء.* لم يتم خصم رصيدك. يرجى المحاولة مجدداً أو التواصل مع الدعم.", parse_mode='Markdown')
             
-            # إشعار للمطور
-            bot.send_message(DEVELOPER_ID, 
-                             f"🔔 *تم بيع رقم جاهز!*\n"
-                             f"*الرقم:* `{number}`\n"
-                             f"*السعر:* `{price}` روبل\n"
-                             f"*للمستخدم:* `@{user_doc.get('username', 'غير متوفر')}`", 
-                             parse_mode='Markdown')
             return
 
         elif data == 'gents':
