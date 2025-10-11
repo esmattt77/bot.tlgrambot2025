@@ -1,18 +1,23 @@
-from telebot import types
+From telebot import types
 import json
 import time
 import logging
 import telebot.apihelper
 import random 
-from datetime import datetime # 💡 تم إضافة استيراد المكتبة
-import re # 💡 تم إضافة استيراد المكتبة
-import pytz # 💡 تم إضافة استيراد المكتبة
+from datetime import datetime 
+import re 
+import pytz 
 
 # تهيئة نظام التسجيل
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
+# 💡 [إضافة قنوات الاشتراك الإجباري]
+CHANNEL_1_ID = '@wwesmaat' 
+CHANNEL_2_ID = '@EESSMT'   
+CHANNELS_LIST = [CHANNEL_1_ID, CHANNEL_2_ID] 
 
 # 💡 --- MongoDB IMPORTS ---
 from db_manager import (
@@ -63,31 +68,35 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 }
         return None
 
-    @bot.message_handler(func=lambda message: message.from_user.id != DEVELOPER_ID)
-    def handle_user_messages(message):
-        chat_id = message.chat.id
-        user_id = message.from_user.id
-        first_name = message.from_user.first_name
-        username = message.from_user.username
+    # 💡 [دالة مساعدة للتحقق من اشتراك المستخدم في القنوات]
+    def check_subscription(bot, user_id, channel_id):
+        try:
+            member = bot.get_chat_member(channel_id, user_id)
+            if member.status in ['member', 'administrator', 'creator']:
+                return True
+            return False
+        except Exception as e:
+            logging.error(f"Error checking subscription for {user_id} in {channel_id}: {e}")
+            return False
+            
+    # 💡 [دالة مساعدة لإنشاء أزرار الاشتراك]
+    def get_subscription_markup(channels_list):
+        markup = types.InlineKeyboardMarkup()
+        for channel in channels_list:
+            channel_link_name = channel.replace('@', '') 
+            markup.add(types.InlineKeyboardButton(f"اشترك في {channel}", url=f"https://t.me/{channel_link_name}"))
+        markup.add(types.InlineKeyboardButton("✅ تم الاشتراك، تحقق الآن", callback_data='check_sub_and_continue'))
+        return markup
         
-        register_user(user_id, first_name, username)
-
-        if message.text in ['/start', 'start/', 'بدء/']:
-            show_main_menu(chat_id)
-            return
-
-        elif message.text in ['/balance', 'رصيدي']:
-            user_doc = get_user_doc(user_id)
-            balance = user_doc.get('balance', 0) if user_doc else 0
-            bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
-    
+    # 💡 [تعديل دالة show_main_menu]
     def show_main_menu(chat_id, message_id=None):
         markup = types.InlineKeyboardMarkup()
         markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
         markup.row(types.InlineKeyboardButton('💰︙شحن رصيدك', callback_data='Payment'), types.InlineKeyboardButton('👤︙قسم الرشق', callback_data='sh'))
         markup.row(types.InlineKeyboardButton('🅿️︙كشف الحساب', callback_data='Record'), types.InlineKeyboardButton('🛍︙قسم العروض', callback_data='Wo'))
         markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
-        markup.row(types.InlineKeyboardButton('💰︙ربح روبل مجاني 🤑', callback_data='assignment'))
+        # 💡 [تم تحديث الزر إلى رابط الإحالة]
+        markup.row(types.InlineKeyboardButton('🔗︙رابط الإحالة (0.25 ₽)', callback_data='invite_link')) 
         markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
         markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
         markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
@@ -104,6 +113,65 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             bot.send_message(chat_id, text, parse_mode='Markdown', reply_markup=markup)
 
 
+    # 💡 [تعديل معالج الرسائل: دعم /start مع الإحالة والتحقق الإجباري]
+    @bot.message_handler(func=lambda message: message.from_user.id != DEVELOPER_ID)
+    def handle_user_messages(message):
+        chat_id = message.chat.id
+        user_id = message.from_user.id
+        first_name = message.from_user.first_name
+        username = message.from_user.username
+        
+        # 1. معالجة رابط الإحالة من /start XXX
+        referrer_id = None
+        if message.text.startswith('/start'):
+            try:
+                payload = message.text.split()[1]
+                if payload.isdigit():
+                    referrer_id = int(payload)
+            except:
+                pass
+        
+        # تسجيل/تحديث المستخدم (سيتم هنا مكافأة المُحيل في db_manager)
+        register_user(user_id, first_name, username, referrer_id=referrer_id)
+
+        # 2. التحقق الإجباري من الاشتراك
+        is_subscribed = True
+        for channel in CHANNELS_LIST:
+            if not check_subscription(bot, user_id, channel):
+                is_subscribed = False
+                break
+
+        if not is_subscribed:
+            markup = get_subscription_markup(CHANNELS_LIST)
+            
+            bot.send_message(chat_id, 
+                             "🛑 **يجب عليك الاشتراك في قنوات البوت الإجبارية لاستخدام الخدمة.**\n\nيرجى الاشتراك في جميع القنوات ثم الضغط على زر **تم الاشتراك**.", 
+                             parse_mode='Markdown', 
+                             reply_markup=markup)
+            return
+
+        # 3. معالجة الأوامر الرئيسية بعد النجاح
+        if message.text.startswith('/start'):
+             show_main_menu(chat_id)
+             return
+
+        elif message.text in ['/balance', 'رصيدي']:
+            user_doc = get_user_doc(user_id)
+            balance = user_doc.get('balance', 0) if user_doc else 0
+            bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
+            return
+
+        # 💡 [معالج أمر /invite]
+        elif message.text in ['/invite', 'رابط الإحالة']:
+            bot.send_message(chat_id, 
+                             f"🔗 *رابط الإحالة الخاص بك:*\n`https://t.me/{bot.get_me().username}?start={user_id}`\n\n"
+                             f"🤑 *عندما يقوم صديقك بالتسجيل عبر هذا الرابط، ستحصل أنت على 0.25 روبل مجاناً.*", 
+                             parse_mode='Markdown')
+            return
+        
+        # 💡 [تم حذف معالجات /start, /balance القديمة من هنا]
+        
+    # 💡 [تعديل معالج Callbacks: تطبيق التحقق الإجباري ومعالج زر التحقق والإحالة]
     @bot.callback_query_handler(func=lambda call: call.from_user.id != DEVELOPER_ID)
     def handle_user_callbacks(call):
         chat_id = call.message.chat.id
@@ -115,7 +183,51 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         user_doc = get_user_doc(user_id)
         user_balance = user_doc.get('balance', 0) if user_doc else 0
         
-        if data == 'back':
+        # 1. التحقق الإجباري من الاشتراك
+        is_subscribed = True
+        for channel in CHANNELS_LIST:
+            if not check_subscription(bot, user_id, channel):
+                is_subscribed = False
+                break
+                
+        if not is_subscribed:
+            markup = get_subscription_markup(CHANNELS_LIST)
+            bot.answer_callback_query(call.id, "🛑 يرجى الاشتراك في القنوات الإجبارية أولاً.", show_alert=True)
+            # محاولة إرسال رسالة الاشتراك مجدداً
+            try:
+                 bot.edit_message_text(
+                    chat_id=chat_id, message_id=message_id, 
+                    text="🛑 **يجب عليك الاشتراك في قنوات البوت الإجبارية لاستخدام الخدمة.**", 
+                    parse_mode='Markdown', 
+                    reply_markup=markup
+                )
+            except telebot.apihelper.ApiTelegramException:
+                 bot.send_message(chat_id, 
+                                 "🛑 **يجب عليك الاشتراك في قنوات البوت الإجبارية لاستخدام الخدمة.**", 
+                                 parse_mode='Markdown', 
+                                 reply_markup=markup)
+            return
+
+        # 2. معالج زر "تم الاشتراك، تحقق الآن"
+        if data == 'check_sub_and_continue':
+            bot.answer_callback_query(call.id, "✅ تم التحقق بنجاح! شكراً لاشتراكك.")
+            show_main_menu(chat_id, message_id)
+            return
+
+        # 3. معالج زر رابط الإحالة في القائمة الرئيسية
+        elif data == 'invite_link':
+            bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"🔗 *رابط الإحالة الخاص بك:*\n`https://t.me/{bot.get_me().username}?start={user_id}`\n\n"
+                     f"🤑 *عندما يقوم صديقك بالتسجيل عبر هذا الرابط، ستحصل أنت على 0.25 روبل مجاناً.*",
+                parse_mode='Markdown',
+                reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
+            )
+            return
+            
+        # 💡 [من هنا يبدأ باقي منطق Callbacks الأصلي]
+        elif data == 'back':
             show_main_menu(chat_id, message_id)
             return
         
@@ -201,7 +313,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             bot.send_message(chat_id, "👑 *خدمة الأرقام الملكية قادمة قريباً، تابعنا لمعرفة المزيد.*", parse_mode='Markdown')
             return
         elif data == 'assignment':
-            bot.send_message(chat_id, "💰 *يمكنك ربح روبل مجانية عن طريق إكمال بعض المهام. تابع الإعلانات لمعرفة التفاصيل.*", parse_mode='Markdown')
+            # 💡 [تم حذف معالج assignment القديم لأنه تم استبداله بزر الإحالة]
+            bot.send_message(chat_id, "💰 *يمكنك ربح روبل مجانية عن طريق مشاركة رابط الإحالة. عد للقائمة الرئيسية واضغط على 'رابط الإحالة'.*", parse_mode='Markdown')
             return
         elif data == 'readycard-10':
             bot.send_message(chat_id, "💳 *متجر الكروت متوفر الآن! تواصل مع الدعم لشراء كرت.*", parse_mode='Markdown')
@@ -600,8 +713,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             else:
                 bot.send_message(chat_id, "❌ فشل طلب الرقم. قد يكون غير متوفر أو أن رصيدك في الخدمة غير كافٍ.")
                 
-        # ❌ [تم حذف معالج get_otp_ القديم بالكامل]
-        
         # 💡 [المعالج الجديد: التحديث اليدوي للكود]
         elif data.startswith('Code_'):
             parts = data.split('_')
