@@ -4,6 +4,9 @@ import time
 import logging
 import telebot.apihelper
 import random 
+from datetime import datetime
+import re
+import pytz # تم إضافة استيراد المكتبات الناقصة (pytz, re, datetime)
 
 # تهيئة نظام التسجيل
 logging.basicConfig(
@@ -392,7 +395,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 message_text += "📝 **سجل مشترياتك الأخيرة:**\n"
                 # عرض آخر 5 مشتريات
                 for i, p in enumerate(purchases[-5:]):
-                    phone_number = p.get('phone_number', p.get('service_name', 'غير متوفر')) 
+                    # نستخدم phone_number أو app_name أو service_name
+                    phone_number = p.get('phone_number', p.get('app_name', p.get('service_name', 'غير متوفر'))) 
                     price = p.get('price', 0)
                     timestamp = p.get('timestamp', 'غير متوفر')
                     status = p.get('status', 'غير معروف')
@@ -400,7 +404,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             else:
                 message_text += "❌ لا يوجد سجل مشتريات حتى الآن."
             
-            bot.send_message(chat_id, message_text, parse_mode='Markdown')
+            try:
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown', reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back')))
+            except telebot.apihelper.ApiTelegramException as e:
+                if "message is not modified" not in str(e):
+                    bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back')))
+            return
             
         elif data.startswith('service_'):
             parts = data.split('_')
@@ -489,6 +498,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='Buynum'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر الدولة التي تريدها: (صفحة {page}/{total_pages})", reply_markup=markup)
 
+        # 💡 [معالج الشراء - تم تعديله لإظهار زر التحديث اليدوي]
         elif data.startswith('buy_'):
             parts = data.split('_')
             service, app_id, country_code = parts[1], parts[2], parts[3]
@@ -502,10 +512,13 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
                 return
 
+            # *** 1. الاتصال بالـ API وجلب الرقم ***
             result = None
             if service == 'viotp':
-                result = viotp_client.buy_number(app_id)
+                # يجب استبدال buy_number بالدالة الصحيحة التي تستخدم country_code و app_id
+                result = viotp_client.buy_number(app_id, country_code) 
             elif service == 'smsman':
+                # يجب التأكد من أن country_code هو الكود الصحيح المطلوب من smsman
                 result = smsman_api['request_smsman_number'](app_id, country_code)
                 if result and 'request_id' in result:
                     result['success'] = True
@@ -517,18 +530,26 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             logging.info(f"Response from {service}: {result}")
 
             if result and result.get('success'):
-                # 💡 يجب التأكد أن request_id هو سلسلة نصية (str) لضمان التوافق مع MongoDB ومعالجة الإلغاء
+                # 💡 يجب التأكد أن request_id هو سلسلة نصية (str)
                 request_id = str(result.get('id', result.get('request_id', random.randint(100000000, 999999999)))) 
                 phone_number = result.get('number', result.get('Phone', 'غير متوفر'))
                 
                 remaining_balance = user_balance - price
                 
+                # *** 2. إعداد الأزرار الجديدة (التحديث اليدوي) ***
                 markup = types.InlineKeyboardMarkup()
-                markup.row(types.InlineKeyboardButton('✅ الحصول على الكود', callback_data=f'get_otp_{service}_{request_id}'))
+                # 💡 الزر الرئيسي الجديد: جلب الكود (Code_)
+                markup.row(types.InlineKeyboardButton('♻️ - تحديث (جلب الكود)', callback_data=f'Code_{service}_{request_id}'))
+                # 💡 زر الإلغاء
                 markup.row(types.InlineKeyboardButton('❌ إلغاء الطلب', callback_data=f'cancel_{service}_{request_id}'))
+                # 💡 زر تغيير الرقم (يفترض أن لديك منطقاً له)
+                markup.row(types.InlineKeyboardButton('🔄 - تغيير رقم آخر.', callback_data=f'ChangeNumber_{service}_{app_id}_{country_code}'))
 
                 app_name = country_info.get('name', 'غير معروف')
                 country_name = country_info.get('name', 'غير معروف')
+                
+                tz = pytz.timezone('Asia/Aden') 
+                current_time = datetime.now(tz).strftime('%I:%M:%S %p')
                 
                 message_text = (
                     f"**☎️ - الرقم:** `{phone_number}`\n"
@@ -539,13 +560,15 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     f"**🤖 - الرصيد المتبقي:** `{remaining_balance}`\n" 
                     f"**🔄 - معرف المشتري:** `@{user_doc.get('username', 'غير متوفر')}`\n"
                     f"**🎦 - الموقع:** `soper.com`\n\n"
-                    f"⚠️ *ملاحظة هامة:* لا يمكنك إلغاء الرقم إلا بعد مرور دقيقتين (2) من وقت الحصول عليه."
+                    f"**🌀 - الحالة:** *••• Pending*\n"
+                    f"**⏰ - وقت الطلب:** {current_time}\n\n"
+                    f"⚠️ *ملاحظة هامة:* أدخل الرقم في التطبيق ثم اضغط على زر *تحديث* لجلب الكود."
                 )
 
                 sent_message = bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
                 new_message_id = sent_message.message_id
                 
-                # 💡 [حفظ البيانات في MongoDB]
+                # *** 3. حفظ البيانات في MongoDB ***
                 update_user_balance(user_id, -price, is_increment=True)
                 
                 register_user(
@@ -563,6 +586,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     }
                 )
                 
+                # حفظ الطلب في active_requests لسهولة الوصول إليه
                 data_file = get_bot_data()
                 active_requests = data_file.get('active_requests', {})
                 active_requests[request_id] = { # يتم تخزينها كسلسلة نصية
@@ -580,60 +604,101 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             else:
                 bot.send_message(chat_id, "❌ فشل طلب الرقم. قد يكون غير متوفر أو أن رصيدك في الخدمة غير كافٍ.")
                 
-        elif data.startswith('get_otp_'):
+        # ❌ [تم حذف معالج get_otp_]
+        
+        # 💡 [المعالج الجديد: التحديث اليدوي للكود]
+        elif data.startswith('Code_'):
             parts = data.split('_')
-            service, request_id = parts[2], parts[3]
             
+            if len(parts) < 3:
+                bot.answer_callback_query(call.id, "خطأ في بيانات التحديث.")
+                return
+
+            service_name = parts[1]
+            request_id = parts[2]
+            
+            bot.answer_callback_query(call.id, "⏳ جاري التحقق من وصول الكود...")
+
+            # 1. استدعاء API لمرة واحدة
             result = None
-            if service == 'viotp':
+            if service_name == 'viotp':
                 result = viotp_client.get_otp(request_id)
-            elif service == 'smsman':
-                result = smsman_api['get_smsman_code'](request_id)
-            elif service == 'tigersms':
+            elif service_name == 'smsman':
+                # يفترض أن هذه الدالة ترجع قاموساً يحتوي على 'code' أو 'success': False
+                result = smsman_api['get_smsman_code'](request_id) 
+            elif service_name == 'tigersms':
                 result = tiger_sms_client.get_code(request_id)
 
-            if result and result.get('success') and result.get('code'):
-                otp_code = result.get('code')
-                data_file = get_bot_data()
-                active_requests = data_file.get('active_requests', {})
+            otp_code = result.get('code') if result and result.get('success') and result.get('code') else None
+            
+            # 2. معالجة النتيجة
+            if otp_code:
+                # [نجاح - تم العثور على الكود]
                 
-                app_name = "غير معروف"
-                if request_id in active_requests: 
-                    phone_number = active_requests[request_id]['phone_number']
-                    app_name = active_requests[request_id].get('app_name', 'غير معروف')
+                # إعداد لوحة المفاتيح النهائية
+                markup_final = types.InlineKeyboardMarkup().row(
+                    types.InlineKeyboardButton('🔙 - رجوع للقائمة الرئيسية.', callback_data='back')
+                )
+                
+                # إرسال الكود في رسالة جديدة
+                bot.send_message(chat_id, f"✅ *رمزك هو: {otp_code}*\n\nالرقم جاهز للاستخدام.", parse_mode='Markdown')
+                
+                # تعديل الرسالة الأصلية لوضع علامة (مكتمل) وإزالة الأزرار
+                try:
+                    new_text = call.message.text.replace("••• Pending", "✅ Completed")
+                    # إزالة رسائل التحقق السابقة
+                    new_text = re.sub(r'\n\*تم التحقق الآن في .+\*\n', '', new_text) 
                     
-                    del active_requests[request_id]
-                    data_file['active_requests'] = active_requests
-                    save_bot_data(data_file)
-
-                    register_user(
-                        user_id, 
-                        user_doc.get('first_name'), 
-                        user_doc.get('username'),
-                        update_purchase_status={
-                            'request_id': request_id, 
-                            'status': 'completed'
-                        }
+                    bot.edit_message_text(
+                        chat_id=chat_id, message_id=message_id, text=new_text, parse_mode='Markdown', reply_markup=markup_final
                     )
+                except Exception as e:
+                    logging.error(f"Failed to edit message upon completion: {e}")
                     
-                    # 💡 [إضافة: إرسال المنشور الترويجي إلى القناة]
-                    try:
-                        promo_message = (
-                            f"🎉 *تم شراء رقم جديد بنجاح!* 🎉\n\n"
-                            f"**التطبيق:** `{app_name}`\n"
-                            f"**الخدمة:** تم التفعيل بنجاح! ✅\n\n"
-                            f"اشترِ رقمك الافتراضي الآن من @{EESSMT}"
-                        )
-                        bot.send_message(f'@{EESSMT}', promo_message, parse_mode='Markdown')
-                        logging.info(f"Sent promo message to @{EESSMT} for Req ID {request_id}")
-                    except Exception as e:
-                        logging.error(f"Failed to send promo message to channel @{EESSMT}: {e}")
-                    
-                    bot.send_message(chat_id, f"✅ *رمزك هو: {otp_code}*\n\nالرقم: *{phone_number}*", parse_mode='Markdown')
-                else:
-                    bot.send_message(chat_id, "❌ حدث خطأ، لم يتم العثور على الطلب.")
+                # تحديث قاعدة البيانات وحذف الطلب من active_requests
+                register_user(user_id, user_doc.get('first_name'), user_doc.get('username'), update_purchase_status={'request_id': request_id, 'status': 'completed'})
+                
+                data_file = get_bot_data()
+                if request_id in data_file.get('active_requests', {}):
+                    del data_file['active_requests'][request_id]
+                    save_bot_data(data_file)
+                
+                # 💡 إرسال المنشور الترويجي إلى القناة
+                try:
+                    active_request_info = data_file.get('active_requests', {}).get(request_id, {})
+                    app_name = active_request_info.get('app_name', 'غير معروف')
+                    promo_message = (
+                        f"🎉 *تم شراء رقم جديد بنجاح!* 🎉\n\n"
+                        f"**التطبيق:** `{app_name}`\n"
+                        f"**الخدمة:** تم التفعيل بنجاح! ✅\n\n"
+                        f"اشترِ رقمك الافتراضي الآن من @{EESSMT}"
+                    )
+                    bot.send_message(f'@{EESSMT}', promo_message, parse_mode='Markdown')
+                except Exception as e:
+                    logging.error(f"Failed to send promo message upon completion: {e}")
+
             else:
-                bot.send_message(chat_id, "❌ لا يوجد كود حتى الآن. حاول مجدداً.", reply_markup=call.message.reply_markup)
+                # [فشل - الكود لم يصل بعد]
+                current_text = call.message.text
+                
+                # إزالة أي رسالة تحقق سابقة
+                new_text = re.sub(r'\n\*تم التحقق الآن في .+\*\n', '', current_text)
+                
+                # إضافة رسالة التحقق الجديدة
+                tz = pytz.timezone('Asia/Aden') 
+                check_time = datetime.now(tz).strftime('%I:%M:%S %p')
+                
+                new_text += f"\n\n*تم التحقق الآن في {check_time}. الكود لم يصل بعد. يرجى الانتظار والمحاولة مرة أخرى.*"
+                
+                try:
+                    bot.edit_message_text(
+                        chat_id=chat_id, message_id=message_id, text=new_text, parse_mode='Markdown', reply_markup=call.message.reply_markup
+                    )
+                except telebot.apihelper.ApiTelegramException as e:
+                    if "message is not modified" not in str(e):
+                        logging.error(f"Error editing message after manual refresh failure: {e}")
+            
+            return
                 
         elif data.startswith('cancel_'):
             parts = data.split('_')
@@ -699,6 +764,15 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                         
                         # د. إرسال رسالة النجاح
                         bot.send_message(chat_id, f"✅ **تم إلغاء الطلب بنجاح!** تم استرجاع مبلغ *{price_to_restore}* روبل إلى رصيدك.", parse_mode='Markdown')
+                        
+                        # هـ. تعديل الرسالة الأصلية لوضع علامة (ملغى) وإزالة الأزرار
+                        try:
+                            final_text = call.message.text.replace("••• Pending", "❌ Cancelled")
+                            final_text = re.sub(r'\n\*تم التحقق الآن في .+\*\n', '', final_text) # إزالة أي رسائل تحقق سابقة
+                            
+                            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=final_text, parse_mode='Markdown', reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - رجوع للقائمة الرئيسية.', callback_data='back')))
+                        except:
+                            pass
                         
                     except Exception as e:
                         logging.error(f"MongoDB/Refund Error during CANCEL for Req ID {request_id_raw}: {e}")
