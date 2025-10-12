@@ -1,6 +1,12 @@
-# db_manager.py
 from pymongo import MongoClient
 import time
+import logging
+
+# تهيئة التسجيل
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # *** مهم: استبدل YOUR_MONGO_CONNECTION_STRING برابط الاتصال الفعلي الخاص بك ***
 MONGO_URI = "mongodb+srv://Esmat:_.SASet#aKcU6Zu@bottlegrmbot2025.gccpnku.mongodb.net/?retryWrites=true&w=majority&appName=bottlegrmbot2025" 
@@ -49,10 +55,10 @@ def update_user_balance(user_id, amount, is_increment=True):
         upsert=True
     )
 
-def register_user(user_id, first_name, username, new_purchase=None, update_purchase_status=None, delete_purchase_id=None):
+def register_user(user_id, first_name, username, new_purchase=None, update_purchase_status=None, delete_purchase_id=None, referrer_id=None):
     """
     🛠️ [التعديل الجذري]
-    تسجيل/تحديث بيانات المستخدم ومعالجة سجل المشتريات بمرونة عالية.
+    تسجيل/تحديث بيانات المستخدم ومعالجة سجل المشتريات بمرونة عالية، ومعالجة الإحالة.
     """
     user_id_str = str(user_id)
     
@@ -66,15 +72,42 @@ def register_user(user_id, first_name, username, new_purchase=None, update_purch
         "last_active": time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
     }
     
-    # تهيئة سجل المشتريات (إذا لم يكن موجوداً)
-    # 💡 يتم سحب القائمة الحالية (أو قائمة فارغة) لمعالجتها
-    purchases = user_doc.get("purchases", []) if user_doc and user_doc.get("purchases") is not None else []
+    # 3. معالجة الإحالة (Referral)
     
-    # 3. معالجة سجل المشتريات
+    # التحقق مما إذا كان المستخدم جديداً (لم يتم العثور على مستند)
+    is_new_user = user_doc is None
+    
+    if is_new_user and referrer_id:
+        referrer_id_str = str(referrer_id)
+        
+        # التأكد من أن المُحيل ليس هو نفسه المستخدم الجديد
+        if referrer_id_str != user_id_str:
+            
+            # التأكد من أن المُحيل موجود في قاعدة البيانات
+            referrer_doc = users_collection.find_one({'_id': referrer_id_str})
+            
+            if referrer_doc:
+                # أ. تخزين معرف المُحيل للمستخدم الجديد
+                update_data["referred_by"] = referrer_id_str
+                
+                # ب. منح مكافأة الإحالة للمُحيل (0.25 روبل)
+                REFERRAL_BONUS = 0.25
+                update_user_balance(referrer_id_str, REFERRAL_BONUS, is_increment=True)
+                
+                logging.info(f"User {user_id_str} referred by {referrer_id_str}. Awarded {REFERRAL_BONUS} RUB to referrer.")
+            else:
+                logging.info(f"Referrer ID {referrer_id_str} not found in DB.")
+        else:
+            logging.info(f"Self-referral attempt detected by {user_id_str}, ignored.")
+
+
+    # 4. معالجة سجل المشتريات (نفس المنطق السابق)
+    
+    # تهيئة سجل المشتريات (إذا لم يكن موجوداً)
+    purchases = user_doc.get("purchases", []) if user_doc and user_doc.get("purchases") is not None else []
     
     # أ. إضافة سجل شراء جديد
     if new_purchase:
-        # 💡 [ضمان تخزين request_id كسلسلة نصية دائماً]
         if 'request_id' in new_purchase:
              new_purchase['request_id'] = str(new_purchase['request_id'])
              
@@ -82,41 +115,50 @@ def register_user(user_id, first_name, username, new_purchase=None, update_purch
     
     # ب. تحديث حالة سجل شراء موجود (إلغاء أو إتمام)
     if update_purchase_status:
-        # 💡 نستخدم str() لضمان المطابقة حتى لو كان الطلب مخزناً كرقم
         request_id_to_update = str(update_purchase_status.get('request_id')) 
         new_status = update_purchase_status.get('status')
         
         found = False
         for p in purchases:
-            # 💡 المطابقة بمرونة عالية (المخزن كسلسلة مقابل القادم كسلسلة)
             if str(p.get('request_id')) == request_id_to_update: 
                 p['status'] = new_status
                 found = True
                 break
         
         if not found:
-             # إشعار للتسجيل في حالة عدم العثور (للمراقبة)
-             # هذا يحدث إذا فشل العثور على الطلب في السجل حتى بعد محاولة الإلغاء
              print(f"Warning: Purchase ID {request_id_to_update} not found for status update for user {user_id_str}.")
 
     # ج. حذف سجل شراء موجود
     if delete_purchase_id:
         purchases = [p for p in purchases if str(p.get('request_id')) != str(delete_purchase_id)]
         
-    # 4. دمج التحديثات
+    # 5. دمج التحديثات
     
-    # 💡 تحديث قائمة المشتريات بالكامل كقائمة محدثة
     update_data['purchases'] = purchases
     
-    # 5. تنفيذ عملية التحديث/الإنشاء
+    # 6. تنفيذ عملية التحديث/الإنشاء
+    
+    # إعداد البيانات التي سيتم تعيينها عند الإنشاء فقط
+    set_on_insert_data = {
+        "balance": 0,
+        "join_date": time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+    }
+    
+    # إذا كان المستخدم جديداً ومُحالاً، سنحتاج لتعيين "referred_by" في $setOnInsert لضمان تخزينه عند الإنشاء
+    if is_new_user and referrer_id and str(referrer_id) != user_id_str:
+        # إذا تم تخزينها في update_data بالفعل، لا نحتاج لتكرارها هنا، لكن للتأكد:
+        if "referred_by" in update_data:
+             set_on_insert_data["referred_by"] = update_data["referred_by"]
+             # إذا تم تخزينها في $setOnInsert، نزيلها من $set لمنع كتابة القيمة الفارغة لاحقاً.
+             if "referred_by" in update_data:
+                del update_data["referred_by"]
+
+    
     users_collection.update_one(
         {"_id": user_id_str},
         {
-            "$set": update_data, # تحديث البيانات الأساسية وسجل المشتريات الجديد بالكامل
-            "$setOnInsert": { # إنشاء القيم الافتراضية إذا كان المستخدم جديداً
-                "balance": 0,
-                "join_date": time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
-            }
+            "$set": update_data,
+            "$setOnInsert": set_on_insert_data
         },
         upsert=True
     )
