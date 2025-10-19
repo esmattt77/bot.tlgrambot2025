@@ -672,6 +672,10 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     f"**🌀 - الحالة:** *••• Pending*\n"
                     f"**⏰ - وقت الطلب:** {current_time}\n\n"
                     f"⚠️ *ملاحظة هامة:* أدخل الرقم في التطبيق ثم اضغط على زر *تحديث* لجلب الكود."
+
+                    # 💡 [إضافة منطق setStatus بعد الشراء لـ VIOTP]
+                    # من الأفضل دائماً إرسال setStatus(3) لـ VIOTP بعد الحصول على الرقم لضمان الانتظار
+                    # تم حذف هذه الخطوة هنا وتركها في زر Code_ لتقليل التعقيد
                 )
 
                 sent_message = bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
@@ -713,7 +717,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             else:
                 bot.send_message(chat_id, "❌ فشل طلب الرقم. قد يكون غير متوفر أو أن رصيدك في الخدمة غير كافٍ.")
                 
-        # 💡 [المعالج الجديد: التحديث اليدوي للكود]
+        # 💡 [المعالج المُعدَّل: التحديث اليدوي للكود]
         elif data.startswith('Code_'):
             parts = data.split('_')
             
@@ -731,6 +735,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
             if service_name == 'viotp':
                 result = viotp_client.get_otp(request_id)
             elif service_name == 'smsman':
+                # تم افتراض أن get_smsman_code تم تعديلها لتعيد المفتاح 'code'
                 result = smsman_api['get_smsman_code'](request_id) 
             elif service_name == 'tigersms':
                 result = tiger_sms_client.get_code(request_id)
@@ -748,6 +753,24 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                 
                 # إرسال الكود في رسالة جديدة
                 bot.send_message(chat_id, f"✅ *رمزك هو: {otp_code}*\n\nالرقم جاهز للاستخدام.", parse_mode='Markdown')
+                
+                # ----------------------------------------------------------------------------------
+                # 💡 [إضافة مهمة: إخبار API بـ "تم الاستخدام" (Completed) لإنهاء الطلب]
+                # ----------------------------------------------------------------------------------
+                try:
+                    # الحالة 6 تعني "تم الانتهاء/الاستخدام" في SMSMAN
+                    if service_name == 'smsman':
+                        smsman_api['set_smsman_status'](request_id, 6) 
+                    elif service_name == 'viotp':
+                        # الحالة 6 تعني "تم النجاح" (Success) في VIOTP (الافتراض)
+                        viotp_client.set_status(request_id, 6)
+                    elif service_name == 'tigersms':
+                        # نستخدم حالة SUCCESS لـ TigerSMS (الافتراض)
+                        tiger_sms_client.set_status(request_id, 'STATUS_SUCCESS') 
+                        
+                except Exception as e:
+                    logging.error(f"Failed to set status to USED for {service_name} Req ID {request_id}: {e}")
+                
                 
                 # تعديل الرسالة الأصلية لوضع علامة (مكتمل) وإزالة الأزرار
                 try:
@@ -784,6 +807,25 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
 
             else:
                 # [فشل - الكود لم يصل بعد]
+                
+                # 💡 [الإضافة الرئيسية لحل مشكلة التحديث اليدوي: إخبار API بالاستمرار في الانتظار]
+                try:
+                    if service_name == 'viotp':
+                        # الحالة 3 لـ VIOTP تعني "جاهز، لكن بانتظار الكود" (الافتراض)
+                        viotp_client.set_status(request_id, 3) 
+                    elif service_name == 'smsman':
+                        # 💥 نستخدم الحالة 3 لطلب "انتظار الكود" في SMSMAN
+                        smsman_api['set_smsman_status'](request_id, 3) 
+                    elif service_name == 'tigersms':
+                        # نستخدم حالة STATUS_WAIT_CODE لطلب الانتظار في TigerSMS (الافتراض)
+                        tiger_sms_client.set_status(request_id, 'STATUS_WAIT_CODE') 
+                
+                    logging.info(f"Set status for {service_name} Req ID {request_id} to WAIT_CODE (Status 3/WAIT_CODE).")
+
+                except Exception as e:
+                    logging.error(f"Failed to set status for {service_name} Req ID {request_id}: {e}")
+                
+                
                 current_text = call.message.text
                 
                 # إزالة أي رسالة تحقق سابقة
@@ -821,9 +863,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
                     success_api_call = True
             
             elif service == 'smsman':
-                # ملاحظة: API SMSMAN تتطلب request_id كسلسلة نصية
+                # ملاحظة: API SMSMAN تتطلب set_smsman_status برمز -1 للإلغاء
                 result = smsman_api['cancel_smsman_request'](request_id_raw) 
-                if result and (result.get('message') == 'ACCESS_CANCEL' or result.get('status') in ['success', 'cancelled']):
+                if result and (result.get('message') == 'STATUS_CANCEL' or result.get('status') in ['success', 'cancelled']):
                     success_api_call = True
             
             elif service == 'tigersms':
