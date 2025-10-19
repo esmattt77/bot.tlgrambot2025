@@ -103,6 +103,7 @@ def request_smsman_number(service_id, country_code):
         }
     return {'status': 'error', 'message': response}
 
+# 💡 تم تعديل هذه الدالة لتغيير المفتاح من 'Code' إلى 'code'
 def get_smsman_code(request_id):
     response = smsman_api_call('getStatus', {'id': request_id})
     
@@ -111,21 +112,34 @@ def get_smsman_code(request_id):
 
     if response.startswith('STATUS_OK:'):
         code = response.split(':')[1]
-        return {'status': 'success', 'Code': code}
+        # 🟢 تم التصحيح: المفتاح الآن هو 'code' (صغير)
+        return {'status': 'success', 'code': code} 
     elif response == 'STATUS_WAIT_CODE':
         return {'status': 'pending'}
 
     return {'status': 'error', 'message': response}
 
-def cancel_smsman_request(request_id):
-    response = smsman_api_call('setStatus', {'id': request_id, 'status': -1})
+# 💡 تم إضافة هذه الدالة الجديدة لتعيين حالة الطلب إلى "انتظار كود" (الحالة 3)
+def set_smsman_status(request_id, status_code):
+    """
+    تستخدم لتعيين حالة الطلب في SMS-Man.
+    الحالة 3: إخبار النظام بالاستمرار في الانتظار/المحاولة مجدداً (Ready) - لتحديث الكود.
+    الحالة -1: إلغاء الطلب (Cancel).
+    """
+    response = smsman_api_call('setStatus', {'id': request_id, 'status': status_code})
 
     if response == 'ERROR_REQUEST_FAILED':
         return False
         
-    if response == 'STATUS_CANCEL':
-        return {'status': 'success', 'message': 'CANCELED'}
+    if response in ['STATUS_OK', 'STATUS_WAIT_CODE', 'STATUS_CANCEL']:
+        # يتم الإرجاع بنجاح في حالة تغيير الحالة
+        return {'status': 'success', 'message': response}
     return {'status': 'error', 'message': response}
+
+# 💡 تم تعديل هذه الدالة لاستخدام set_smsman_status الجديدة
+def cancel_smsman_request(request_id):
+    # نستخدم الحالة -1 لتعيين حالة الإلغاء
+    return set_smsman_status(request_id, -1) 
 
 def get_smsman_countries(app_id):
     service_name = service_map.get(str(app_id))
@@ -139,7 +153,7 @@ def get_smsman_countries(app_id):
 
     countries_data = {}
     try:
-        data =البيانات = json.loads(response_json)
+        data = json.loads(response_json)
         if isinstance(data, dict):
             for country_code, service_info in data.items():
                 if service_name in service_info and float(service_info[service_name]['cost']) > 0:
