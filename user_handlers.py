@@ -121,6 +121,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         first_name = message.from_user.first_name
         username = message.from_user.username
         
+        # 🛑 إضافة الشرط الحاسم: منع ظهور رسالة الاشتراك الإجباري في الجروبات
+        if message.chat.type != "private":
+            return # إيقاف التنفيذ فوراً إذا لم تكن الدردشة خاصة
+        # ----------------------------------------------------
+        
         # 1. معالجة رابط الإحالة من /start XXX
         referrer_id = None
         if message.text.startswith('/start'):
@@ -183,7 +188,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_
         user_doc = get_user_doc(user_id)
         user_balance = user_doc.get('balance', 0) if user_doc else 0
         
-        # 1. التحقق الإجباري من الاشتراك
+        # 1. التحقق الإجباري من الاشتراك (هذا الفحص ضروري لإيقاف العمليات في البوت)
         is_subscribed = True
         for channel in CHANNELS_LIST:
             if not check_subscription(bot, user_id, channel):
