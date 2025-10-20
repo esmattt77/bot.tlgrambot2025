@@ -1,6 +1,10 @@
 import requests
 import json
 import os
+import logging
+
+# إعداد logging لطباعة الأخطاء في السجل
+logger = logging.getLogger(__name__)
 
 API_KEY = os.environ.get('TIGER_SMS_API_KEY')
 BASE_URL = 'https://api.tiger-sms.com/stubs/handler_api.php'
@@ -12,10 +16,11 @@ class TigerSMSAPI:
     def _make_request(self, params):
         params['api_key'] = self.api_key
         try:
-            response = requests.get(BASE_URL, params=params)
+            response = requests.get(BASE_URL, params=params, timeout=10) # إضافة timeout
             response.raise_for_status()
             return response.text
         except requests.exceptions.RequestException as e:
+            logger.error(f"TIGER SMS API request failed with error: {e}, Params: {params}")
             return f"ERROR: API request failed - {e}"
 
     def get_balance(self):
@@ -36,7 +41,8 @@ class TigerSMSAPI:
             data = json.loads(response)
             countries = {}
             for country_id, services_info in data.items():
-                if service_name in services_info and services_info[service_name]['count'] > 0:
+                # ملاحظة: تأكد أن service_name (مثل 'tt' لتيك توك) يطابق المفاتيح في API
+                if service_name in services_info and services_info[service_name].get('count', 0) > 0:
                     countries[country_id] = {
                         'name': self._get_country_name(country_id),
                         'price': services_info[service_name].get('cost'),
@@ -44,6 +50,7 @@ class TigerSMSAPI:
                     }
             return countries
         except json.JSONDecodeError:
+            logger.error(f"TIGER SMS failed to decode JSON from getPrices: {response}")
             return {}
 
     def get_number(self, service_name, country_id):
@@ -59,6 +66,8 @@ class TigerSMSAPI:
             phone_number = parts[2].strip()
             return {'success': True, 'id': request_id, 'number': phone_number}
         else:
+            # يمكن أن يكون الخطأ بسبب BAD_SERVICE إذا كان اسم الخدمة (مثل 'tt') غير صحيح
+            logger.warning(f"TIGER SMS getNumber failed: {response}")
             return {'success': False, 'error': response}
             
     def get_code(self, request_id):
@@ -67,27 +76,47 @@ class TigerSMSAPI:
             'id': request_id
         }
         response = self._make_request(params)
+        
+        # 🟢 تصحيح دالة get_code للتعامل مع كل الحالات
         if response.startswith('STATUS_OK:'):
             code = response.split(':')[1].strip()
             return {'success': True, 'code': code}
         elif response == 'STATUS_WAIT_CODE':
             return {'success': False, 'status': 'waiting'}
+        elif response == 'STATUS_CANCEL' or response == 'STATUS_FREE':
+            # الطلب ملغى أو انتهت صلاحيته (يحتاج إلى رد المبلغ للمستخدم)
+            return {'success': False, 'status': 'cancelled', 'error': response}
+        elif response.startswith('ERROR'):
+            return {'success': False, 'status': 'error', 'error': response}
         else:
-            return {'success': False, 'error': response}
+            return {'success': False, 'status': 'unknown', 'error': response}
 
-    def cancel_request(self, request_id):
+    # 🟢 إضافة دالة set_status المفقودة
+    def set_status(self, request_id, status_code):
+        """
+        لتغيير حالة الطلب على Tiger SMS.
+        المتوقع استدعاؤها مع status_code=3 لتأكيد استلام الكود.
+        """
         params = {
             'action': 'setStatus',
             'id': request_id,
-            'status': 8
+            'status': status_code
         }
         response = self._make_request(params)
-        if response == 'ACCESS_CANCEL':
+        
+        # ACCESS_READY هو الرد المتوقع للنجاح في تغيير الحالة (خصوصاً لرمز 3)
+        if response == 'ACCESS_READY' or response == 'ACCESS_CANCEL': 
             return {'success': True}
         else:
+            logger.error(f"TIGER SMS set_status failed for ID {request_id}, Response: {response}")
             return {'success': False, 'error': response}
 
+    def cancel_request(self, request_id):
+        # الكود 8 يعني إلغاء الطلب (إرجاع الرقم إلى المخزون)
+        return self.set_status(request_id, 8) 
+        
     def _get_country_name(self, country_id):
+        # (باقي قاموس الدول كما هو)
         countries = {
             '74': 'أفغانستان 🇦🇫', '155': 'ألبانيا 🇦🇱', '58': 'الجزائر 🇩🇿', '76': 'أنغولا 🇦🇴', '181': 'أنغويلا 🇦🇮',
             '169': 'أنتيجواباربودا 🇦🇬', '39': 'الأرجنتين 🇦🇷', '148': 'أرمينيا 🇦🇲', '179': 'اروبا 🇦🇼', '175': 'استراليا 🇦🇺',
@@ -131,4 +160,3 @@ class TigerSMSAPI:
             '70': 'فنزويلا 🇻🇪', '10': 'فيتنام 🇻🇳', '30': 'اليمن 🇾🇪', '147': 'زامبيا 🇿🇲', '96': 'زيمبابوي 🇿🇼'
         }
         return countries.get(str(country_id), 'غير معروف')
-
