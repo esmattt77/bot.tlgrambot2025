@@ -62,13 +62,11 @@ def smsman_api_call(action, params=None):
         response.raise_for_status()  # Raise an exception for HTTP errors
         return response.text
     except requests.exceptions.RequestException as e:
-        # Added a print statement to help with debugging
         print(f"Error making SMS-Man API call: {e}")
         return 'ERROR_REQUEST_FAILED'
 
 def get_smsman_balance():
     response = smsman_api_call('getBalance')
-    # If the API call fails, the response will be 'ERROR_REQUEST_FAILED'
     if response == 'ERROR_REQUEST_FAILED':
         return False
         
@@ -77,7 +75,6 @@ def get_smsman_balance():
             balance = float(response.split(':')[1])
             return balance
         except (ValueError, IndexError):
-            # If parsing the response fails, it's a bad response
             print("Error parsing SMS-Man balance response.")
             return False
     return False
@@ -103,7 +100,6 @@ def request_smsman_number(service_id, country_code):
         }
     return {'status': 'error', 'message': response}
 
-# 💡 تم تعديل هذه الدالة لتغيير المفتاح من 'Code' إلى 'code'
 def get_smsman_code(request_id):
     response = smsman_api_call('getStatus', {'id': request_id})
     
@@ -112,34 +108,38 @@ def get_smsman_code(request_id):
 
     if response.startswith('STATUS_OK:'):
         code = response.split(':')[1]
-        # 🟢 تم التصحيح: المفتاح الآن هو 'code' (صغير)
+        # المفتاح الآن هو 'code' (صغير)
         return {'status': 'success', 'code': code} 
     elif response == 'STATUS_WAIT_CODE':
         return {'status': 'pending'}
 
     return {'status': 'error', 'message': response}
 
-# 💡 تم إضافة هذه الدالة الجديدة لتعيين حالة الطلب إلى "انتظار كود" (الحالة 3)
+# 🛠️ التعديل 1: تحسين دالة set_smsman_status لمعالجة ACCESS_CANCEL
 def set_smsman_status(request_id, status_code):
     """
     تستخدم لتعيين حالة الطلب في SMS-Man.
-    الحالة 3: إخبار النظام بالاستمرار في الانتظار/المحاولة مجدداً (Ready) - لتحديث الكود.
-    الحالة -1: إلغاء الطلب (Cancel).
+    الحالة 8: إلغاء الطلب واسترجاع الرصيد (Cancel and Refund).
+    الحالة 3: إخبار النظام بالاستمرار في الانتظار/المحاولة مجدداً.
+    الحالة -1: إلغاء الطلب (قد لا يضمن استرجاع الرصيد).
     """
     response = smsman_api_call('setStatus', {'id': request_id, 'status': status_code})
 
     if response == 'ERROR_REQUEST_FAILED':
         return False
         
-    if response in ['STATUS_OK', 'STATUS_WAIT_CODE', 'STATUS_CANCEL']:
-        # يتم الإرجاع بنجاح في حالة تغيير الحالة
+    # 💡 نضيف ACCESS_CANCEL لأنه يُعاد حتى عندما يكون الإلغاء قد تم بالفعل
+    if response in ['STATUS_OK', 'STATUS_WAIT_CODE', 'STATUS_CANCEL', 'ACCESS_CANCEL']: 
+        # نعتبر هذه الردود نجاحاً في إرسال الأمر للموقع
         return {'status': 'success', 'message': response}
+    
+    # رسائل خطأ أخرى مثل BAD_STATUS
     return {'status': 'error', 'message': response}
 
-# 💡 تم تعديل هذه الدالة لاستخدام set_smsman_status الجديدة
+# 🛠️ التعديل 2: تغيير كود الإلغاء من -1 إلى 8 لضمان استرجاع الرصيد
 def cancel_smsman_request(request_id):
-    # نستخدم الحالة -1 لتعيين حالة الإلغاء
-    return set_smsman_status(request_id, -1) 
+    # نستخدم الحالة 8 لتعيين حالة الإلغاء واسترداد الرصيد.
+    return set_smsman_status(request_id, 8) 
 
 def get_smsman_countries(app_id):
     service_name = service_map.get(str(app_id))
@@ -167,7 +167,6 @@ def get_smsman_countries(app_id):
                         'count': int(service_info[service_name]['count'])
                     }
     except (requests.exceptions.JSONDecodeError, ValueError) as e:
-        # Added a print statement to help with debugging
         print(f"Error parsing SMS-Man countries JSON: {e}")
         return {}
 
