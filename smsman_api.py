@@ -100,43 +100,50 @@ def request_smsman_number(service_id, country_code):
         }
     return {'status': 'error', 'message': response}
 
+# 🛠️ التعديل هنا: إضافة .strip() لمعالجة المسافات البيضاء
 def get_smsman_code(request_id):
     response = smsman_api_call('getStatus', {'id': request_id})
     
     if response == 'ERROR_REQUEST_FAILED':
         return False
 
-    if response.startswith('STATUS_OK:'):
-        code = response.split(':')[1]
-        # المفتاح الآن هو 'code' (صغير)
-        return {'status': 'success', 'code': code} 
-    elif response == 'STATUS_WAIT_CODE':
+    # 💡 تنظيف الرد من أي مسافات بيضاء غير ضرورية (Spaces, Newlines)
+    cleaned_response = response.strip() 
+
+    if cleaned_response.startswith('STATUS_OK:'):
+        parts = cleaned_response.split(':', 1) # تقسيم مرة واحدة فقط
+        # يجب أن يكون الكود في الجزء الثاني بعد ':'
+        if len(parts) > 1:
+            code = parts[1].strip() # تنظيف الكود أيضاً لضمان خلوه من المسافات
+            return {'status': 'success', 'code': code} 
+        else:
+            # حالة نادرة: الرد كان STATUS_OK: لكن لا يوجد كود
+            return {'status': 'error', 'message': 'STATUS_OK without code'}
+            
+    elif cleaned_response == 'STATUS_WAIT_CODE':
         return {'status': 'pending'}
 
-    return {'status': 'error', 'message': response}
+    # إذا لم تتطابق أي حالة، يُفترض أنه خطأ
+    return {'status': 'error', 'message': cleaned_response}
 
-# 🛠️ التعديل 1: تحسين دالة set_smsman_status لمعالجة ACCESS_CANCEL
+# 🛠️ دالة تعيين الحالة (معدلة سابقاً لتعالج ACCESS_CANCEL)
 def set_smsman_status(request_id, status_code):
     """
     تستخدم لتعيين حالة الطلب في SMS-Man.
     الحالة 8: إلغاء الطلب واسترجاع الرصيد (Cancel and Refund).
-    الحالة 3: إخبار النظام بالاستمرار في الانتظار/المحاولة مجدداً.
-    الحالة -1: إلغاء الطلب (قد لا يضمن استرجاع الرصيد).
     """
     response = smsman_api_call('setStatus', {'id': request_id, 'status': status_code})
 
     if response == 'ERROR_REQUEST_FAILED':
         return False
         
-    # 💡 نضيف ACCESS_CANCEL لأنه يُعاد حتى عندما يكون الإلغاء قد تم بالفعل
+    # نعتبر هذه الردود نجاحاً في إرسال الأمر للموقع
     if response in ['STATUS_OK', 'STATUS_WAIT_CODE', 'STATUS_CANCEL', 'ACCESS_CANCEL']: 
-        # نعتبر هذه الردود نجاحاً في إرسال الأمر للموقع
         return {'status': 'success', 'message': response}
     
-    # رسائل خطأ أخرى مثل BAD_STATUS
     return {'status': 'error', 'message': response}
 
-# 🛠️ التعديل 2: تغيير كود الإلغاء من -1 إلى 8 لضمان استرجاع الرصيد
+# 🛠️ دالة إلغاء الطلب (معدلة سابقاً لاستخدام الكود 8)
 def cancel_smsman_request(request_id):
     # نستخدم الحالة 8 لتعيين حالة الإلغاء واسترداد الرصيد.
     return set_smsman_status(request_id, 8) 
