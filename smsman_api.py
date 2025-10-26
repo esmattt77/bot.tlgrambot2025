@@ -2,9 +2,9 @@
 import json
 import requests
 import os
-import logging # 💡 تمت إضافة مكتبة logging
+import logging 
 
-# تهيئة نظام التسجيل لضمان ظهور الردود في سجلاتك
+# تهيئة نظام التسجيل
 logging.basicConfig(level=logging.INFO) 
 
 SMSMAN_API_KEY = os.environ.get('SMSMAN_API_KEY')
@@ -103,31 +103,36 @@ def request_smsman_number(service_id, country_code):
         }
     return {'status': 'error', 'message': response}
 
-# 🛠️ التعديل هنا: إضافة سطر لتسجيل الرد الخام
+# 🛠️ التعديل هنا: إضافة معالجة STATUS_WAIT_RETRY
 def get_smsman_code(request_id):
     response = smsman_api_call('getStatus', {'id': request_id})
     
     if response == 'ERROR_REQUEST_FAILED':
         return False
 
-    # 💡 التعديل الحاسم: طباعة الرد الخام لتحديده
+    # تسجيل الرد الخام (للتشخيص)
     logging.info(f"SMSMAN_RAW_RESPONSE for Req ID {request_id}: {response}") 
 
-    # تنظيف الرد من أي مسافات بيضاء غير ضرورية
     cleaned_response = response.strip() 
 
-    if cleaned_response.startswith('STATUS_OK:'):
+    # 🟢 التعديل الجديد: فحص STATUS_OK و STATUS_WAIT_RETRY
+    if cleaned_response.startswith('STATUS_OK:') or cleaned_response.startswith('STATUS_WAIT_RETRY:'):
+        
+        # نستخدم الجزء الذي يلي أول ":" للحصول على الكود
         parts = cleaned_response.split(':', 1)
         if len(parts) > 1:
-            code = parts[1].strip() # تنظيف الكود أيضاً
+            code = parts[1].strip() # تنظيف الكود
             return {'status': 'success', 'code': code} 
         else:
-            return {'status': 'error', 'message': 'STATUS_OK without code'}
+            return {'status': 'error', 'message': 'STATUS_OK/WAIT_RETRY without code'}
             
     elif cleaned_response == 'STATUS_WAIT_CODE':
         return {'status': 'pending'}
+        
+    elif cleaned_response == 'STATUS_CANCEL':
+        return {'status': 'error', 'message': 'STATUS_CANCELLED'} 
 
-    # خطأ أو رد غير متوقع (مثل STATUS_CANCEL أو خطأ جديد)
+    # خطأ أو رد غير متوقع
     return {'status': 'error', 'message': cleaned_response}
 
 # 🛠️ دالة تعيين الحالة
