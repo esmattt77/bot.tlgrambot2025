@@ -1,12 +1,15 @@
 # smsman_api.py
 import json
 import requests
-
 import os
+import logging # 💡 تمت إضافة مكتبة logging
+
+# تهيئة نظام التسجيل لضمان ظهور الردود في سجلاتك
+logging.basicConfig(level=logging.INFO) 
+
 SMSMAN_API_KEY = os.environ.get('SMSMAN_API_KEY')
 
 # A dictionary to map SMS-Man internal codes to country names and flags
-# This is a direct translation of the PHP array you provided
 smsman_country_map = {
     "49": "لاتفيا 🇱🇻", "21": "مصر 🇪🇬", "50": "النمسا 🇦🇹", "6": "إندونيسيا 🇮🇩",
     "24": "كمبوديا 🇰🇭", "77": "قبرص 🇨🇾", "84": "المجر 🇭🇺", "175": "استراليا 🇦🇺",
@@ -59,7 +62,7 @@ def smsman_api_call(action, params=None):
     params['api_key'] = SMSMAN_API_KEY
     try:
         response = requests.get(BASE_URL, params=params)
-        response.raise_for_status()  # Raise an exception for HTTP errors
+        response.raise_for_status()
         return response.text
     except requests.exceptions.RequestException as e:
         print(f"Error making SMS-Man API call: {e}")
@@ -100,50 +103,46 @@ def request_smsman_number(service_id, country_code):
         }
     return {'status': 'error', 'message': response}
 
-# 🛠️ التعديل هنا: إضافة .strip() لمعالجة المسافات البيضاء
+# 🛠️ التعديل هنا: إضافة سطر لتسجيل الرد الخام
 def get_smsman_code(request_id):
     response = smsman_api_call('getStatus', {'id': request_id})
     
     if response == 'ERROR_REQUEST_FAILED':
         return False
 
-    # 💡 تنظيف الرد من أي مسافات بيضاء غير ضرورية (Spaces, Newlines)
+    # 💡 التعديل الحاسم: طباعة الرد الخام لتحديده
+    logging.info(f"SMSMAN_RAW_RESPONSE for Req ID {request_id}: {response}") 
+
+    # تنظيف الرد من أي مسافات بيضاء غير ضرورية
     cleaned_response = response.strip() 
 
     if cleaned_response.startswith('STATUS_OK:'):
-        parts = cleaned_response.split(':', 1) # تقسيم مرة واحدة فقط
-        # يجب أن يكون الكود في الجزء الثاني بعد ':'
+        parts = cleaned_response.split(':', 1)
         if len(parts) > 1:
-            code = parts[1].strip() # تنظيف الكود أيضاً لضمان خلوه من المسافات
+            code = parts[1].strip() # تنظيف الكود أيضاً
             return {'status': 'success', 'code': code} 
         else:
-            # حالة نادرة: الرد كان STATUS_OK: لكن لا يوجد كود
             return {'status': 'error', 'message': 'STATUS_OK without code'}
             
     elif cleaned_response == 'STATUS_WAIT_CODE':
         return {'status': 'pending'}
 
-    # إذا لم تتطابق أي حالة، يُفترض أنه خطأ
+    # خطأ أو رد غير متوقع (مثل STATUS_CANCEL أو خطأ جديد)
     return {'status': 'error', 'message': cleaned_response}
 
-# 🛠️ دالة تعيين الحالة (معدلة سابقاً لتعالج ACCESS_CANCEL)
+# 🛠️ دالة تعيين الحالة
 def set_smsman_status(request_id, status_code):
-    """
-    تستخدم لتعيين حالة الطلب في SMS-Man.
-    الحالة 8: إلغاء الطلب واسترجاع الرصيد (Cancel and Refund).
-    """
     response = smsman_api_call('setStatus', {'id': request_id, 'status': status_code})
 
     if response == 'ERROR_REQUEST_FAILED':
         return False
         
-    # نعتبر هذه الردود نجاحاً في إرسال الأمر للموقع
     if response in ['STATUS_OK', 'STATUS_WAIT_CODE', 'STATUS_CANCEL', 'ACCESS_CANCEL']: 
         return {'status': 'success', 'message': response}
     
     return {'status': 'error', 'message': response}
 
-# 🛠️ دالة إلغاء الطلب (معدلة سابقاً لاستخدام الكود 8)
+# 🛠️ دالة إلغاء الطلب
 def cancel_smsman_request(request_id):
     # نستخدم الحالة 8 لتعيين حالة الإلغاء واسترداد الرصيد.
     return set_smsman_status(request_id, 8) 
@@ -169,7 +168,7 @@ def get_smsman_countries(app_id):
                     countries_data[country_code] = {
                         'code': country_code,
                         'name': country_display_name,
-                        'flag': '', # Flags are included in the name string
+                        'flag': '', 
                         'price': float(service_info[service_name]['cost']),
                         'count': int(service_info[service_name]['count'])
                     }
