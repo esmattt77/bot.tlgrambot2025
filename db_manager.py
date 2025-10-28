@@ -57,7 +57,7 @@ def update_user_balance(user_id, amount, is_increment=True):
 
 def register_user(user_id, first_name, username, new_purchase=None, update_purchase_status=None, delete_purchase_id=None, referrer_id=None):
     """
-    🛠️ [التعديل الجذري]
+    🛠️ [مُراجعة للتأكد من دعم SMMKings]
     تسجيل/تحديث بيانات المستخدم ومعالجة سجل المشتريات بمرونة عالية، ومعالجة الإحالة.
     """
     user_id_str = str(user_id)
@@ -101,7 +101,7 @@ def register_user(user_id, first_name, username, new_purchase=None, update_purch
             logging.info(f"Self-referral attempt detected by {user_id_str}, ignored.")
 
 
-    # 4. معالجة سجل المشتريات (نفس المنطق السابق)
+    # 4. معالجة سجل المشتريات (هذه الدالة مرنة بما يكفي لدعم شراء الرشق)
     
     # تهيئة سجل المشتريات (إذا لم يكن موجوداً)
     purchases = user_doc.get("purchases", []) if user_doc and user_doc.get("purchases") is not None else []
@@ -111,6 +111,7 @@ def register_user(user_id, first_name, username, new_purchase=None, update_purch
         if 'request_id' in new_purchase:
              new_purchase['request_id'] = str(new_purchase['request_id'])
              
+        # يتم تسجيل عمليات الرشق (SMMKings) بحالة 'sh_purchased' في user_handlers.py
         purchases.append(new_purchase)
     
     # ب. تحديث حالة سجل شراء موجود (إلغاء أو إتمام)
@@ -120,6 +121,7 @@ def register_user(user_id, first_name, username, new_purchase=None, update_purch
         
         found = False
         for p in purchases:
+            # البحث عن الطلب سواء كان رقم وهمي أو طلب رشق
             if str(p.get('request_id')) == request_id_to_update: 
                 p['status'] = new_status
                 found = True
@@ -178,17 +180,27 @@ def get_bot_data():
     # 💡 نبحث عن المستند bot_settings
     data_doc = data_collection.find_one({"_id": "bot_settings"})
     
-    # القيم الافتراضية
+    # 💡 [التأكيد على حقل sh_services] - التأكد من وجوده كقيمة افتراضية
     default = {
+        '_id': 'bot_settings', # إضافة الـ ID الافتراضي
         'countries': {}, 
         'states': {}, 
         'active_requests': {}, 
-        'sh_services': {}, 
+        'sh_services': {},       # ⬅️ **تم التأكد من وجود هذا الحقل لخدمات SMMKings**
+        'awaiting_sh_order': {}, # ⬅️ **تم التأكد من وجود هذا الحقل لحالة انتظار الرشق**
         'ready_numbers_stock': {} 
     }
     
     # 💡 نرجع المستند إذا وجد، أو القيم الافتراضية
-    return data_doc if data_doc else default
+    
+    if data_doc:
+        # إذا وُجد المستند، نتأكد من إضافة الحقول الجديدة إذا كانت مفقودة (مرونة إضافية)
+        for key, value in default.items():
+            if key not in data_doc:
+                data_doc[key] = value
+        return data_doc
+    else:
+        return default
 
 def save_bot_data(data_dict):
     """
