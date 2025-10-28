@@ -315,67 +315,92 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         # =========================================================================
         # 🚀 [تعديل معالج 'smm_services' إلى 'smm_services' - عرض الفئات من المخزن]
         # =========================================================================
+# =========================================================================
+# 🚀 [تعديل معالج 'smm_services' - عرض الفئات من المخزن]
+# =========================================================================
         elif data == 'smm_services': 
-            markup = types.InlineKeyboardMarkup()
-            
-            # 1. جلب الخدمات المخزنة محلياً
-            bot_data = get_bot_data()
-            all_smm_services = bot_data.get('smmkings_services', {})
-            
-            if not all_smm_services:
-                # ❌ حالة عدم وجود خدمات مخزنة
-                bot.answer_callback_query(call.id, "❌ لا توجد فئات لخدمات الرشق متاحة حاليًا. يرجى إبلاغ الإدارة بتحديث الخدمات.")
-                return
-                
-            # 2. استخراج الفئات الفريدة
-            categories = set()
-            for service_id, info in all_smm_services.items():
-                category_name = info.get('category_name', 'فئة عامة')
-                categories.add(category_name)
-            
-            if not categories:
-                bot.answer_callback_query(call.id, "❌ لم يتم العثور على أي فئات بعد الجلب. يرجى إبلاغ الإدارة.")
-                return
-            
-            # 3. بناء الأزرار للفئات
-            for category_name in sorted(list(categories)):
-                # نستخدم .replace() لضمان أن الكولباك داتا صالحة
-                clean_category_name = category_name.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')
-                markup.add(types.InlineKeyboardButton(f"🔗 {category_name}", callback_data=f'smm_cat_{clean_category_name}'))
-                
-            markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
-            
-            try:
-                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
-            except telebot.apihelper.ApiTelegramException as e:
-                if "message is not modified" not in str(e):
-                    bot.send_message(chat_id, "🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
-            return
+    markup = types.InlineKeyboardMarkup()
+    
+    # 1. جلب الخدمات المخزنة محلياً
+    bot_data = get_bot_data()
+    # 💡 يجب أن يكون الحقل الآن 'smmkings_services' بعد التعديل في db_manager.py
+    all_smm_services = bot_data.get('smmkings_services', {}) 
+    
+    if not all_smm_services:
+        bot.answer_callback_query(call.id, "❌ لا توجد فئات لخدمات الرشق متاحة حاليًا.")
+        return
+        
+    # 2. استخراج الفئات الفريدة (مع حساب عدد الخدمات داخل كل فئة)
+    categories_with_count = {}
+    for service_id, info in all_smm_services.items():
+        category_name = info.get('category_name', 'فئة عامة')
+        # التأكد من أن الخدمة تحتوي على اسم وسعر قبل إضافتها للفئة
+        if info.get('name') and info.get('rate'):
+             categories_with_count[category_name] = categories_with_count.get(category_name, 0) + 1
+    
+    # 3. بناء الأزرار للفئات
+    for category_name in sorted(categories_with_count.keys()):
+        count = categories_with_count[category_name]
+        
+        # 💡 التصحيح: استخدام طريقة تنظيف بسيطة وثابتة لاسم الكولباك داتا
+        # نستخدم دالة hash بسيطة أو نعتمد على استبدال الأحرف العربية بعلامة واحدة
+        # هنا سنعتمد على استبدال المسافات فقط ونترك الكود العربي كما هو
+        clean_category_name = category_name.replace(' ', '_')
+        
+        # نرسل اسم الفئة النظيف وعدد الخدمات
+        markup.add(types.InlineKeyboardButton(f"🔗 {category_name} ({count} خدمات)", callback_data=f'smm_cat_{clean_category_name}'))
+        
+    if not categories_with_count:
+        bot.answer_callback_query(call.id, "❌ لم يتم العثور على أي خدمات نشطة في أي فئة.")
+        markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
+        try:
+             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
+        except:
+             bot.send_message(chat_id, "🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
+        return
+        
+    markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
+    
+    try:
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
+    except telebot.apihelper.ApiTelegramException as e:
+        if "message is not modified" not in str(e):
+            bot.send_message(chat_id, "🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
+    return
 
-        # =========================================================================
-        # 🚀 [معالج 'smm_cat_' - عرض الخدمات داخل الفئة من المخزن]
-        # =========================================================================
-        elif data.startswith('smm_cat_'):
-            # استعادة اسم الفئة المشفر
-            clean_category_name_raw = data.split('_', 2)[-1]
-            # إعادة الاسم الأصلي للفئة (قد تحتاج لمزيد من المرونة هنا)
-            category_name = clean_category_name_raw.replace('_', ' ') 
-            
-            markup = types.InlineKeyboardMarkup()
-            
-            bot_data = get_bot_data()
-            all_smm_services = bot_data.get('smmkings_services', {})
+# =========================================================================
+# 🚀 [معالج 'smm_cat_' - عرض الخدمات داخل الفئة من المخزن]
+# =========================================================================
+elif data.startswith('smm_cat_'):
+    # استعادة اسم الفئة المشفر
+    clean_category_name_raw = data.split('_', 2)[-1]
+    
+    # 💡 التصحيح: استعادة الاسم الأصلي للفئة بعكس عملية التنظيف (إعادة المسافات)
+    category_name = clean_category_name_raw.replace('_', ' ') 
+    
+    markup = types.InlineKeyboardMarkup()
+    
+    bot_data = get_bot_data()
+    all_smm_services = bot_data.get('smmkings_services', {})
 
-            # 1. فلترة الخدمات حسب الفئة
-            services_in_category = {
-                s_id: s_info 
-                for s_id, s_info in all_smm_services.items() 
-                if s_info.get('category_name', 'فئة عامة').replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '') == clean_category_name_raw
-            }
-                
-            if not services_in_category:
-                bot.answer_callback_query(call.id, "❌ لا توجد خدمات متاحة في هذه الفئة حاليًا.")
-                return
+    # 1. فلترة الخدمات حسب الفئة
+    services_in_category = {}
+    for s_id, s_info in all_smm_services.items():
+        # 💡 التصحيح: الفلترة باستخدام الاسم النظيف الذي تم إنشاؤه في الدالة السابقة
+        stored_clean_name = s_info.get('category_name', 'فئة عامة').replace(' ', '_')
+        
+        if stored_clean_name == clean_category_name_raw:
+             # التأكد من أن الخدمة تحتوي على جميع الحقول المطلوبة قبل إضافتها
+             if s_info.get('name') and s_info.get('rate'):
+                 services_in_category[s_id] = s_info
+            
+    if not services_in_category:
+        bot.answer_callback_query(call.id, "❌ لا توجد خدمات متاحة في هذه الفئة حاليًا.")
+        return
+        
+    # ... (باقي كود بناء أزرار الخدمات كما هو)
+    # ...
+    
                 
             # 2. بناء الأزرار للخدمات
             for service_id, service_info in services_in_category.items():
