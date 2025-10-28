@@ -180,14 +180,14 @@ def get_bot_data():
     # 💡 نبحث عن المستند bot_settings
     data_doc = data_collection.find_one({"_id": "bot_settings"})
     
-    # 💡 [التأكيد على حقل sh_services] - التأكد من وجوده كقيمة افتراضية
+    # 💡 [التعديل الضروري هنا] - تم توحيد الأسماء لتتوافق مع user_handlers.py
     default = {
-        '_id': 'bot_settings', # إضافة الـ ID الافتراضي
+        '_id': 'bot_settings', 
         'countries': {}, 
         'states': {}, 
         'active_requests': {}, 
-        'sh_services': {},       # ⬅️ **تم التأكد من وجود هذا الحقل لخدمات SMMKings**
-        'awaiting_sh_order': {}, # ⬅️ **تم التأكد من وجود هذا الحقل لحالة انتظار الرشق**
+        'smmkings_services': {}, # ⬅️ تم التعديل من 'sh_services'
+        'user_states': {},       # ⬅️ تم التعديل من 'awaiting_sh_order'
         'ready_numbers_stock': {} 
     }
     
