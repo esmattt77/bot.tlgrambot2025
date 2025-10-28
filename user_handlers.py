@@ -62,7 +62,7 @@ def format_success_message(order_id, country_name, country_flag, user_id, price,
         f"➖ الـسعر : ₽ {price:.2f} 💙•\n"
         f"➖ الرقم : {masked_phone_number}\n"
         f"➖ الكود : [ {code} ]💡\n"
-        f"➖ المرسل : {service_app_name} 🧿•\n" # تم التعديل على service_name
+        f"➖ المرسل : {service_name} 🧿•\n" # تم التعديل على service_name
         f"➖ الحالة : تم التفعيل ✅•\n"
         f"➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖\n"
         f"📆 {date_time_str}"
@@ -102,7 +102,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 is_match = True
             
             # حالة الطلب لا يجب أن تكون مكتملة أو ملغاة مسبقاً
-            if is_match and p.get('status') not in ['completed', 'cancelled', 'ready_number_purchased']: 
+            if is_match and p.get('status') not in ['completed', 'cancelled', 'ready_number_purchased', 'smm_completed', 'smm_cancelled']: 
                 
                 # وجدنا الطلب، نُعيد معلوماته لاسترجاع الرصيد
                 return {
@@ -312,93 +312,132 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot.send_message(chat_id, message_text, parse_mode='Markdown')
             return
 
-        # 💡 [تعديل معالج 'sh' إلى 'smm_services' - عرض الخدمات]
-        elif data == 'smm_services': # تم تغيير 'sh' إلى 'smm_services'
+        # =========================================================================
+        # 🚀 [تعديل معالج 'smm_services' إلى 'smm_services' - عرض الفئات من المخزن]
+        # =========================================================================
+        elif data == 'smm_services': 
             markup = types.InlineKeyboardMarkup()
             
-            # 💡 استدعاء API SMMKings لجلب الفئات (Categories) وعرضها
-            try:
-                # نفترض أن الدالة تجلب قائمة بالفئات (Categories) لخدمات SMM
-                categories = smm_kings_api.get_categories() 
-            except Exception as e:
-                logging.error(f"Error fetching SMMKings Categories: {e}")
-                categories = {}
-                
-            if not categories:
-                bot.send_message(chat_id, "❌ لا توجد فئات لخدمات الرشق متاحة حاليًا.")
+            # 1. جلب الخدمات المخزنة محلياً
+            bot_data = get_bot_data()
+            all_smm_services = bot_data.get('smmkings_services', {})
+            
+            if not all_smm_services:
+                # ❌ حالة عدم وجود خدمات مخزنة
+                bot.answer_callback_query(call.id, "❌ لا توجد فئات لخدمات الرشق متاحة حاليًا. يرجى إبلاغ الإدارة بتحديث الخدمات.")
                 return
                 
-            for category_id, category_name in categories.items():
-                # نستخدم 'smm_cat_CATEGORY_ID' للانتقال إلى عرض الخدمات داخل الفئة
-                markup.add(types.InlineKeyboardButton(f"🔗 {category_name}", callback_data=f'smm_cat_{category_id}'))
+            # 2. استخراج الفئات الفريدة
+            categories = set()
+            for service_id, info in all_smm_services.items():
+                category_name = info.get('category_name', 'فئة عامة')
+                categories.add(category_name)
+            
+            if not categories:
+                bot.answer_callback_query(call.id, "❌ لم يتم العثور على أي فئات بعد الجلب. يرجى إبلاغ الإدارة.")
+                return
+            
+            # 3. بناء الأزرار للفئات
+            for category_name in sorted(list(categories)):
+                # نستخدم .replace() لضمان أن الكولباك داتا صالحة
+                clean_category_name = category_name.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')
+                markup.add(types.InlineKeyboardButton(f"🔗 {category_name}", callback_data=f'smm_cat_{clean_category_name}'))
                 
             markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
-            return
-
-        # 💡 [معالج 'smm_cat_'] - عرض الخدمات داخل الفئة
-        elif data.startswith('smm_cat_'):
-            category_id = data.split('_')[-1]
-            markup = types.InlineKeyboardMarkup()
             
             try:
-                # نفترض أن الدالة تجلب الخدمات التابعة لهذه الفئة
-                services = smm_kings_api.get_services_by_category(category_id)
-            except Exception as e:
-                logging.error(f"Error fetching SMMKings Services for Cat {category_id}: {e}")
-                services = {}
-                
-            if not services:
-                bot.send_message(chat_id, "❌ لا توجد خدمات متاحة في هذه الفئة حاليًا.")
-                return
-                
-            for service_id, service_info in services.items():
-                name = service_info.get('name', f"خدمة #{service_id}")
-                min_order = service_info.get('min', 'Min')
-                rate_per_k = service_info.get('rate', '0.00')
-                
-                # نستخدم 'smm_service_SERVICE_ID' للانتقال إلى شاشة الطلب
-                markup.add(types.InlineKeyboardButton(f"{name} | {min_order}+ | $ {rate_per_k}", callback_data=f'smm_order_{service_id}'))
-                
-            markup.add(types.InlineKeyboardButton('🔙 - رجوع لقائمة الفئات', callback_data='smm_services'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🔗 *اختر الخدمة التي تريد طلبها:*", parse_mode='Markdown', reply_markup=markup)
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
+            except telebot.apihelper.ApiTelegramException as e:
+                if "message is not modified" not in str(e):
+                    bot.send_message(chat_id, "🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
             return
 
-        # 💡 [معالج 'smm_order_'] - طلب الخدمة (يحتاج لخطوة إدخال المستخدم)
+        # =========================================================================
+        # 🚀 [معالج 'smm_cat_' - عرض الخدمات داخل الفئة من المخزن]
+        # =========================================================================
+        elif data.startswith('smm_cat_'):
+            # استعادة اسم الفئة المشفر
+            clean_category_name_raw = data.split('_', 2)[-1]
+            # إعادة الاسم الأصلي للفئة (قد تحتاج لمزيد من المرونة هنا)
+            category_name = clean_category_name_raw.replace('_', ' ') 
+            
+            markup = types.InlineKeyboardMarkup()
+            
+            bot_data = get_bot_data()
+            all_smm_services = bot_data.get('smmkings_services', {})
+
+            # 1. فلترة الخدمات حسب الفئة
+            services_in_category = {
+                s_id: s_info 
+                for s_id, s_info in all_smm_services.items() 
+                if s_info.get('category_name', 'فئة عامة').replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '') == clean_category_name_raw
+            }
+                
+            if not services_in_category:
+                bot.answer_callback_query(call.id, "❌ لا توجد خدمات متاحة في هذه الفئة حاليًا.")
+                return
+                
+            # 2. بناء الأزرار للخدمات
+            for service_id, service_info in services_in_category.items():
+                name = service_info.get('name', f"خدمة #{service_id}")
+                min_order = service_info.get('min', 'Min')
+                rate_api = float(service_info.get('rate', '0.00'))
+                
+                # 💡 افتراض سعر بيع للمستخدم (يجب جلب هذا من إعدادات المشرف)
+                # نستخدم سعر API * 2 مؤقتاً للتوضيح (1.0 USD = 2.0 RUB)
+                user_rate_per_k = rate_api * 2 
+                
+                # نستخدم 'smm_order_SERVICE_ID' للانتقال إلى شاشة الطلب
+                markup.add(types.InlineKeyboardButton(f"{name} | Min {min_order} | ₽ {user_rate_per_k:.2f}", callback_data=f'smm_order_{service_id}'))
+                
+            markup.add(types.InlineKeyboardButton('🔙 - رجوع لقائمة الفئات', callback_data='smm_services'))
+            
+            try:
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name}:*", parse_mode='Markdown', reply_markup=markup)
+            except telebot.apihelper.ApiTelegramException as e:
+                if "message is not modified" not in str(e):
+                    bot.send_message(chat_id, f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name}:*", parse_mode='Markdown', reply_markup=markup)
+            return
+
+        # =========================================================================
+        # 🚀 [معالج 'smm_order_' - جلب التفاصيل من المخزن وبدء الطلب]
+        # =========================================================================
         elif data.startswith('smm_order_'):
             service_id = data.split('_')[-1]
             
-            try:
-                # جلب تفاصيل الخدمة (الاسم، السعر، الحد الأدنى) لتضمينها في الرسالة
-                service_details = smm_kings_api.get_service_details(service_id)
-                name = service_details.get('name', 'خدمة رشق')
-                rate = service_details.get('rate', '0.00')
-                min_order = service_details.get('min', '1')
-                max_order = service_details.get('max', 'غير محدود')
-            except Exception as e:
-                logging.error(f"Error fetching SMMKings Service Details for {service_id}: {e}")
+            # جلب تفاصيل الخدمة من المخزن المحلي
+            bot_data = get_bot_data()
+            all_smm_services = bot_data.get('smmkings_services', {})
+            service_details = all_smm_services.get(service_id, {})
+            
+            if not service_details:
+                bot.answer_callback_query(call.id, "❌ خطأ: تفاصيل الخدمة غير متوفرة.")
                 bot.send_message(chat_id, "❌ خطأ في جلب تفاصيل الخدمة. يرجى المحاولة لاحقاً.")
                 return
             
+            name = service_details.get('name', 'خدمة رشق')
+            rate_api = float(service_details.get('rate', '0.00')) # سعر API بالدولار/الروبل
+            min_order = str(service_details.get('min', '1'))
+            max_order = str(service_details.get('max', 'غير محدود'))
             
-            # 🛑 طلب الرابط والكمية من المستخدم (هذه الخطوة تحتاج دالة معالج رسالة)
-            # سنقوم بتخزين حالة المستخدم و Service ID
-            
+            # 💡 افتراض سعر بيع للمستخدم (يجب جلب هذا من إعدادات المشرف)
+            user_rate_per_k = rate_api * 2 
+
             # حفظ حالة المستخدم (الخدمة التي يريد طلبها)
-            bot_data = get_bot_data()
             bot_data['user_states'][user_id] = {
                 'state': 'awaiting_smm_link',
                 'service_id': service_id,
                 'service_name': name,
-                'rate': rate,
-                'min': min_order
+                'rate': user_rate_per_k, # استخدام سعر البيع للمستخدم
+                'min': min_order,
+                'max': max_order
             }
             save_bot_data(bot_data)
             
             # إرسال الرسالة للمستخدم
             message_text = (
                 f"✅ **أنت على وشك طلب خدمة:** `{name}`\n"
-                f"💰 **السعر:** ${rate} لكل 1000\n"
+                f"💰 **السعر:** `{user_rate_per_k:.2f}` روبل لكل 1000\n"
                 f"🔢 **الكمية:** الحد الأدنى {min_order} والأقصى {max_order}\n\n"
                 f"🔗 **الخطوة 1:** يرجى إرسال **الرابط/الـ URL** الذي تريد الرشق إليه (مثال: رابط صورة، رابط حساب، إلخ).\n"
             )
@@ -613,11 +652,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 # عرض آخر 5 مشتريات
                 for i, p in enumerate(purchases[-5:]):
                     # نستخدم phone_number أو app_name أو service_name
-                    phone_number = p.get('phone_number', p.get('app_name', p.get('service_name', 'غير متوفر'))) 
+                    item_name = p.get('phone_number', p.get('app_name', p.get('service_name', 'غير متوفر'))) 
                     price = p.get('price', 0)
                     timestamp = p.get('timestamp', 'غير متوفر')
                     status = p.get('status', 'غير معروف')
-                    message_text += f"*{i+1}. شراء {phone_number} بسعر {price} روبل ({status}) في {timestamp}*\n"
+                    message_text += f"*{i+1}. شراء {item_name} بسعر {price} روبل ({status}) في {timestamp}*\n"
             else:
                 message_text += "❌ لا يوجد سجل مشتريات حتى الآن."
             
@@ -1107,7 +1146,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         link = message.text.strip()
         
         bot_data = get_bot_data()
-        user_state = bot_data['user_states'][user_id]
+        user_state = bot_data['user_states'].get(user_id)
+        
+        if not user_state:
+            bot.send_message(user_id, "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
+            return
         
         # 1. حفظ الرابط وتغيير الحالة لطلب الكمية
         user_state['link'] = link
@@ -1118,35 +1161,42 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         # 2. طلب الكمية من المستخدم
         message_text = (
             f"🔗 **تم حفظ الرابط:** `{link}`\n"
-            f"🔢 **الخطوة 2:** يرجى إرسال **الكمية المطلوبة** (أقل كمية هي {user_state.get('min', 1)})."
+            f"🔢 **الخطوة 2:** يرجى إرسال **الكمية المطلوبة** (أقل كمية هي {user_state.get('min', '1')}، والحد الأقصى {user_state.get('max', 'غير محدود')})."
         )
         bot.send_message(user_id, message_text, parse_mode='Markdown')
         
     @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(message.from_user.id, {}).get('state') == 'awaiting_smm_quantity')
     def handle_smm_quantity_input(message):
         user_id = message.from_user.id
-        try:
-            quantity = int(message.text.strip())
-        except ValueError:
-            bot.send_message(user_id, "❌ *الكمية غير صحيحة. يرجى إرسال رقم صحيح.*", parse_mode='Markdown')
-            return
-            
+        
         bot_data = get_bot_data()
         user_state = bot_data['user_states'].get(user_id)
         
         if not user_state:
             bot.send_message(user_id, "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
             return
+
+        try:
+            quantity = int(message.text.strip())
+        except ValueError:
+            bot.send_message(user_id, "❌ *الكمية غير صحيحة. يرجى إرسال رقم صحيح.*", parse_mode='Markdown')
+            return
             
+        
         service_id = user_state.get('service_id')
         link = user_state.get('link')
         rate_per_k = float(user_state.get('rate', 0))
         min_qty = int(user_state.get('min', 1))
+        max_qty = int(user_state.get('max', 999999999)) # قيمة عالية لـ "غير محدود"
         service_name = user_state.get('service_name', 'خدمة رشق')
         
         if quantity < min_qty:
             bot.send_message(user_id, f"❌ *الكمية المدخلة أقل من الحد الأدنى. الحد الأدنى هو {min_qty}.*", parse_mode='Markdown')
             return
+        
+        if quantity > max_qty:
+             bot.send_message(user_id, f"❌ *الكمية المدخلة أكبر من الحد الأقصى. الحد الأقصى هو {max_qty}.*", parse_mode='Markdown')
+             return
             
         # 3. حساب السعر وتأكيد الطلب
         price = (quantity / 1000) * rate_per_k
