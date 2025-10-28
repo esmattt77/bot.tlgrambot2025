@@ -15,16 +15,25 @@ logging.basicConfig(
 SIM_CHANNEL_ID = -1001158537466 # آيدي القناة الرقمي
 # SIM_CHANNEL_ID = None # اتركه None إذا لم يكن لديك قناة للإشعارات
 
-# 💡 قاموس ترجمة أسماء الخدمات والفئات من الإنجليزية إلى العربية
+# 💡 قاموس ترجمة أسماء الخدمات والفئات من الإنجليزية إلى العربية (مُحسّن)
+# ************** القائمة الموسعة للترجمة **************
 SERVICE_TRANSLATIONS = {
+    # المنصات الكبيرة
     "Instagram": "إنستقرام",
     "Facebook": "فيسبوك",
     "YouTube": "يوتيوب",
     "TikTok": "تيك توك",
     "Twitter": "تويتر",
     "Telegram": "تليجرام",
+    "Snapchat": "سناب شات",
     "Spotify": "سبوتيفاي",
-    "Website Traffic": "زيارات مواقع",
+    "Twitch": "تويتش",
+    "Pinterest": "بينتيريست",
+    "Discord": "ديسكورد",
+    "LinkedIn": "لينكدإن",
+    "SoundCloud": "ساوند كلاود",
+    
+    # أنواع الخدمات الشائعة
     "Views": "مشاهدات",
     "Followers": "متابعين",
     "Likes": "إعجابات",
@@ -32,20 +41,66 @@ SERVICE_TRANSLATIONS = {
     "Shares": "مشاركات",
     "Members": "أعضاء",
     "Reactions": "تفاعلات",
+    "Subscribers": "مشتركين",
+    "Traffic": "زيارات",
+    "Saves": "حفظ",
+    "Mentions": "منشن",
+    "Ratings": "تقييمات",
+    
+    # الصفات والضمانات
     "Arab": "عرب",
     "Real": "حقيقي",
-    "Non Drop": "غير تساقط",
+    "Non Drop": "غير تساقط", # مهم: الحفاظ على المسافة
     "Drop": "تساقط",
     "Premium": "مميز",
     "Guaranteed": "مضمون",
+    "High Quality": "جودة عالية",
+    "HQ": "جودة عالية",
+    "Speed": "سرعة",
+    "Fast": "سريع",
+    "Slow": "بطيء",
+    "Mix": "مختلط",
+    "Targeted": "مستهدف",
+    "Lifetime": "مدى الحياة",
+    "Start": "بدء",
+    "Instant": "فوري",
+    "Cheapest": "الأرخص",
+    
+    # كلمات عامة
+    "Website": "موقع ويب",
+    "Post": "منشور",
+    "Story": "ستوري",
+    "Reel": "ريلز",
+    "Video": "فيديو",
+    "Live Stream": "بث مباشر",
+    "Group": "مجموعة",
+    "Channel": "قناة",
 }
+# ****************************************************
 
 def translate_service_name(name):
     """دالة لترجمة الكلمات الرئيسية في اسم الخدمة إلى العربية."""
-    # يتم استبدال الكلمات الرئيسية في الاسم
-    for en, ar in SERVICE_TRANSLATIONS.items():
-        name = name.replace(en, ar)
-    return name
+    # يتم استبدال الكلمات الرئيسية في الاسم بترتيب تنازلي للطول لضمان دقة الترجمة
+    # (مثل ترجمة "Non Drop" قبل "Drop")
+    
+    # قائمة الكلمات الإنجليزية المراد ترجمتها، مرتبة حسب الطول (تنازلي) لضمان الأولوية للأطول
+    sorted_keys = sorted(SERVICE_TRANSLATIONS.keys(), key=len, reverse=True)
+    
+    # تحويل الاسم إلى Title Case للمساعدة في مطابقة الكلمات بغض النظر عن حالة الأحرف
+    name_title = name 
+    
+    for en in sorted_keys:
+        ar = SERVICE_TRANSLATIONS[en]
+        
+        # استخدام التعبير العادي للبحث عن الكلمة الإنجليزية ككلمة كاملة
+        # (لحل مشكلة تطابق الأحرف الجزئي)
+        import re
+        # بحث حساس لحالة الأحرف
+        pattern = re.compile(r'\b' + re.escape(en) + r'\b', re.IGNORECASE) 
+        name_title = pattern.sub(ar, name_title)
+        
+    return name_title.replace("[]", "") # إزالة الأقواس الفارغة إذا لم يتم ترجمة الفئة
+
 
 # 💡 --- MongoDB IMPORTS ---
 # افترض أن هذا الملف تم إنشاؤه في مكان آخر
@@ -483,8 +538,8 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 اختر الإجراء لإدارة خدمات الرشق:", reply_markup=markup)
 
         elif data == 'fetch_smmkings_services':
-            try: bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🔄 جاري جلب خدمات SMMKings... (قد يستغرق وقتاً)")
-            except telebot.apihelper.ApiTelegramException: pass
+            try: bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🔄 جاري جلب خدمات SMMKings... (قد يستغرق وقتاً)", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu')))
+            except telebot.apihelper.ApiTelegramException: pass # في حال كانت الرسالة محذوفة أو لم يتم تعديلها
 
             services_data = smmkings_client.get_services(force_reload=True)
             
@@ -494,9 +549,11 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 count = 0
                 
                 for service_id, service in services_dict.items():
+                    # *** تطبيق الترجمة المُحسّنة هنا ***
                     translated_category = translate_service_name(service['category'])
                     translated_name = translate_service_name(service['name'])
                     
+                    # دمج الفئة والاسم المترجمين
                     final_service_name = f"[{translated_category}] {translated_name}"
                     service_id = str(service['service']) 
                     
@@ -512,7 +569,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 
                 save_bot_data({'smmkings_services': smm_services_storage})
                 
-                message = f"✅ تم جلب وتخزين {count} خدمة من SMMKings بنجاح.\n\n"
+                message = f"✅ تم جلب وتخزين {count} خدمة من SMMKings بنجاح.\n\n⚠️ تذكر أن ترجمة الأسماء تعتمد على قاموس البوت. إذا وجدت كلمات لم تُترجم، يمكنك إضافتها لقاموس `SERVICE_TRANSLATIONS` ثم إعادة الجلب."
             else:
                 error_msg = services_data.get('error', 'خطأ غير معروف') if services_data else 'فشل في الاتصال أو لم يتم إرجاع بيانات.'
                 message = f"❌ فشل جلب خدمات SMMKings: {error_msg}"
@@ -531,11 +588,16 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="❌ لا توجد خدمات SMMKings مخزنة لتعديلها. يرجى جلبها أولاً.", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu')))
                 return
 
-            # فرز الخدمات أبجدياً (أو حسب أي مفتاح تريده)
+            # فرز الخدمات أبجدياً (للتنظيم)
             sorted_services = sorted(smmkings_services.items(), key=lambda item: item[1].get('name', ''))
             
             total_services = len(sorted_services)
             total_pages = (total_services + items_per_page - 1) // items_per_page
+            
+            # التأكد من أن رقم الصفحة صالح
+            if page < 1: page = 1
+            if page > total_pages: page = total_pages # قد يحدث هذا إذا تم حذف خدمات
+
             start_index = (page - 1) * items_per_page
             end_index = start_index + items_per_page
             
@@ -544,6 +606,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             markup = types.InlineKeyboardMarkup(row_width=1)
             
             for service_id, info in current_page_services:
+                # استخدام الاسم المترجم المخزن بالفعل
                 name_short = (info['name'][:50] + '...') if len(info['name']) > 53 else info['name']
                 markup.add(types.InlineKeyboardButton(f"✍️ {name_short} ({info.get('user_price', 0)} روبل)", callback_data=f'select_smm_to_edit_{service_id}'))
             
@@ -552,6 +615,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             if page > 1:
                 nav_buttons.append(types.InlineKeyboardButton('◀️ السابق', callback_data=f'edit_smm_service_price_page_{page - 1}'))
             
+            # زر عرض رقم الصفحة (غير قابل للضغط)
             nav_buttons.append(types.InlineKeyboardButton(f'صفحة {page}/{total_pages}', callback_data='ignore'))
 
             if page < total_pages:
