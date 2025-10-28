@@ -471,11 +471,13 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
 
+        # -------------------------------------------------------------------------------
         # --- إدارة خدمات الرشق (SMM) ---
+        # -------------------------------------------------------------------------------
         elif data == 'sh_admin_menu':
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('🔄 جلب/تحديث خدمات SMMKings', callback_data='fetch_smmkings_services'))
-            markup.row(types.InlineKeyboardButton('✍️ تعديل سعر خدمة SMM', callback_data='edit_smm_service_price'))
+            markup.row(types.InlineKeyboardButton('✍️ تعديل سعر خدمة SMM', callback_data='edit_smm_service_price_page_1')) # تم التعديل لإضافة رقم الصفحة
             markup.row(types.InlineKeyboardButton('عرض الخدمات المخزنة 📄', callback_data='view_smmkings_services'))
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 اختر الإجراء لإدارة خدمات الرشق:", reply_markup=markup)
@@ -503,6 +505,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                         'api_rate': float(service['rate']),
                         'min': int(service['min']),
                         'max': int(service['max']),
+                        # الحفاظ على السعر الحالي إذا كان موجودًا، وإلا تعيين سعر افتراضي
                         'user_price': data_file.get('smmkings_services', {}).get(service_id, {}).get('user_price', round(float(service['rate']) * 1.5)), 
                     }
                     count += 1
@@ -517,6 +520,51 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('رجوع لقائمة الإدارة', callback_data='sh_admin_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+
+        # 💡 تم حل مشكلة 414 هنا عن طريق إضافة نظام تقسيم الصفحات (Pagination)
+        elif data.startswith('edit_smm_service_price_page_'):
+            page = int(data.split('_')[-1])
+            items_per_page = 10 
+            
+            smmkings_services = data_file.get('smmkings_services', {})
+            if not smmkings_services:
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="❌ لا توجد خدمات SMMKings مخزنة لتعديلها. يرجى جلبها أولاً.", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu')))
+                return
+
+            # فرز الخدمات أبجدياً (أو حسب أي مفتاح تريده)
+            sorted_services = sorted(smmkings_services.items(), key=lambda item: item[1].get('name', ''))
+            
+            total_services = len(sorted_services)
+            total_pages = (total_services + items_per_page - 1) // items_per_page
+            start_index = (page - 1) * items_per_page
+            end_index = start_index + items_per_page
+            
+            current_page_services = sorted_services[start_index:end_index]
+
+            markup = types.InlineKeyboardMarkup(row_width=1)
+            
+            for service_id, info in current_page_services:
+                name_short = (info['name'][:50] + '...') if len(info['name']) > 53 else info['name']
+                markup.add(types.InlineKeyboardButton(f"✍️ {name_short} ({info.get('user_price', 0)} روبل)", callback_data=f'select_smm_to_edit_{service_id}'))
+            
+            # أزرار التنقل بين الصفحات
+            nav_buttons = []
+            if page > 1:
+                nav_buttons.append(types.InlineKeyboardButton('◀️ السابق', callback_data=f'edit_smm_service_price_page_{page - 1}'))
+            
+            nav_buttons.append(types.InlineKeyboardButton(f'صفحة {page}/{total_pages}', callback_data='ignore'))
+
+            if page < total_pages:
+                nav_buttons.append(types.InlineKeyboardButton('التالي ▶️', callback_data=f'edit_smm_service_price_page_{page + 1}'))
+            
+            if nav_buttons: markup.row(*nav_buttons)
+            
+            markup.add(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
+            
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, 
+                                  text=f"اختر خدمة SMM التي تريد تعديل سعرها: (الصفحة {page}/{total_pages})", 
+                                  reply_markup=markup)
+
 
         elif data == 'view_smmkings_services':
             smmkings_services = data_file.get('smmkings_services', {})
@@ -543,29 +591,6 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
 
-        elif data == 'edit_smm_service_price':
-            smmkings_services = data_file.get('smmkings_services', {})
-            if not smmkings_services:
-                bot.send_message(chat_id, "❌ لا توجد خدمات SMMKings مخزنة لتعديلها. يرجى جلبها أولاً.")
-                return
-
-            markup = types.InlineKeyboardMarkup(row_width=1)
-            sorted_services = sorted(smmkings_services.items(), key=lambda item: item[1].get('name', ''))
-            
-            # العرض في حدود 100 زر لتجنب خطأ 414
-            for service_id, info in sorted_services:
-                name_short = (info['name'][:50] + '...') if len(info['name']) > 53 else info['name']
-                markup.add(types.InlineKeyboardButton(f"✍️ {name_short} ({info.get('user_price', 0)} روبل)", callback_data=f'select_smm_to_edit_{service_id}'))
-            
-            markup.add(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
-            
-            try:
-                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر خدمة SMM التي تريد تعديل سعرها: ({len(smmkings_services)} خدمة مرتبة أبجدياً)", reply_markup=markup)
-            except telebot.apihelper.ApiHTTPException as e:
-                 if "414" in str(e):
-                      bot.send_message(chat_id, f"❌ حدث خطأ 414 Request-URI Too Large. لديك عدد كبير جداً من الخدمات. يرجى التخفيف من الخدمات.", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu')))
-                 else: raise e
-                      
         elif data.startswith('select_smm_to_edit_'):
             service_id = data.split('_')[-1]
             smmkings_services = data_file.get('smmkings_services', {})
