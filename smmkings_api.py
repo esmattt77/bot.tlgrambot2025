@@ -2,16 +2,19 @@ import requests
 import json
 import logging
 import os
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
-# تأكد من إضافة هذا المتغير البيئي (SMM_API_KEY) إلى الاستضافة
-API_KEY = os.environ.get('SMM_API_KEY') 
+# تأكد من إضافة هذا المتغير البيئي (SMMKINGS_API_KEY) إلى الاستضافة
+API_KEY = os.environ.get('SMMKINGS_API_KEY') 
 BASE_URL = 'https://smmkings.com/api/v2'
 
 class SMMKingsAPI:
     def __init__(self, api_key):
         self.api_key = api_key
+        # تخزين الخدمات محلياً لتقليل عدد طلبات API
+        self._services_cache = None 
         
     def _make_request(self, params):
         """دالة خاصة لإرسال الطلبات إلى SMMKings API."""
@@ -34,20 +37,84 @@ class SMMKingsAPI:
             logger.error(f"SMMKings API request failed: {e}, Params: {params}")
             return {"error": f"API_REQUEST_FAILED: {e}"}
 
-    # 1. جلب قائمة الخدمات المتاحة
-    def get_services(self):
-        """جلب قائمة الخدمات والأسعار والمخزون."""
+    # 1. جلب قائمة الخدمات المتاحة وتخزينها
+    def get_services(self, force_reload=False):
+        """جلب قائمة الخدمات والأسعار والمخزون، باستخدام الذاكرة المؤقتة."""
+        if self._services_cache is not None and not force_reload:
+            return {'success': True, 'services': self._services_cache}
+            
         params = {'action': 'services'}
         response = self._make_request(params)
         
         if isinstance(response, list):
             # الاستجابة الناجحة تكون قائمة من القواميس
-            return {'success': True, 'services': response}
+            self._services_cache = {str(s['service']): s for s in response}
+            return {'success': True, 'services': self._services_cache}
         else:
             # إذا كانت الاستجابة ليست قائمة، فهي تحتوي على خطأ
             error_msg = response.get('error', 'UNKNOWN_ERROR')
             logger.error(f"SMMKings get_services failed: {error_msg}")
             return {'success': False, 'error': error_msg}
+
+    # -------------------------------------------------------------------------
+    # 💡 الدوال المطلوبة لإضافة خدمات الرشق في user_handlers.py
+    # -------------------------------------------------------------------------
+
+    def get_categories(self):
+        """
+        جلب قائمة الفئات (Categories) المتاحة من الخدمات.
+        النتيجة: {category_name: category_name, ...} (مفتاح وقيمة متطابقان للاستخدام في Callbacks)
+        """
+        services_response = self.get_services()
+        if not services_response['success']:
+            return {}
+
+        categories = {}
+        for service_id, service_info in services_response['services'].items():
+            category_name = service_info.get('category')
+            if category_name:
+                # نستخدم اسم الفئة كنظام تعريف مؤقت، يجب أن تكون هذه الأسماء ثابتة
+                categories[category_name] = category_name 
+        
+        # تحويل القاموس إلى قائمة بالترتيب الأبجدي لتسهيل العرض في البوت
+        return dict(sorted(categories.items()))
+
+
+    def get_services_by_category(self, category_name):
+        """
+        جلب الخدمات التي تنتمي إلى فئة محددة.
+        :param category_name: اسم الفئة (Category Name).
+        النتيجة: {service_id: service_details, ...}
+        """
+        services_response = self.get_services()
+        if not services_response['success']:
+            return {}
+            
+        filtered_services = {}
+        for service_id, service_info in services_response['services'].items():
+            if service_info.get('category') == category_name:
+                filtered_services[service_id] = service_info
+                
+        # فرز الخدمات بناءً على معرف الخدمة أو الاسم
+        return dict(sorted(filtered_services.items(), key=lambda item: int(item[0]))) 
+
+
+    def get_service_details(self, service_id):
+        """
+        جلب تفاصيل خدمة محددة (الاسم، السعر، الحد الأدنى/الأقصى).
+        :param service_id: معرف الخدمة (Service ID).
+        النتيجة: قاموس تفاصيل الخدمة، أو قاموس خطأ فارغ.
+        """
+        services_response = self.get_services()
+        if not services_response['success']:
+            return {}
+            
+        # البحث في الذاكرة المؤقتة (التي مفاتيحها هي Service ID كسلاسل نصية)
+        return services_response['services'].get(str(service_id), {})
+
+    # -------------------------------------------------------------------------
+    # نهاية الدوال الجديدة
+    # -------------------------------------------------------------------------
 
     # 2. إضافة طلب جديد (شراء الخدمة)
     def add_order(self, service_id, link, quantity, runs=None, interval=None):
