@@ -2,6 +2,13 @@ from telebot import types
 import telebot.apihelper
 import json
 import time
+import logging
+
+# تهيئة التسجيل
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # *** مهم: يجب تحديد آيدي قناة الإشعارات هنا إذا كنت تريد نشر الإضافة تلقائيًا ***
 # SIM_CHANNEL_ID = -100xxxxxxxxxx # آيدي القناة الرقمي
@@ -184,31 +191,38 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 save_bot_data({'states': data_file.get('states', {})})
 
         elif state and state.get('step') == 'waiting_for_sh_service_name':
-            service_name = message.text
-            data_file.setdefault('states', {})[str(user_id)] = {'step': 'waiting_for_sh_service_price', 'service_name': service_name}
-            save_bot_data({'states': data_file.get('states', {})})
-            bot.send_message(chat_id, "أرسل **سعر الخدمة** بالروبل.")
-
+            # هذا الجزء لم يعد مستخدماً في النظام الجديد المعتمد على جلب API
+            bot.send_message(chat_id, "❌ تم إيقاف هذا الأسلوب. يرجى استخدام 'جلب/تحديث خدمات SMMKings'.")
+        
         elif state and state.get('step') == 'waiting_for_sh_service_price':
+            # هذا الجزء لم يعد مستخدماً في النظام الجديد المعتمد على جلب API
+            bot.send_message(chat_id, "❌ تم إيقاف هذا الأسلوب. يرجى استخدام 'جلب/تحديث خدمات SMMKings'.")
+
+        # 🆕 --- معالج استقبال السعر الجديد وتحديث قاعدة البيانات لخدمات SMM ---
+        elif state and state.get('step') == 'waiting_for_new_smm_price':
             try:
-                service_price = int(message.text)
-                if service_price <= 0:
+                new_price = int(message.text)
+                if new_price <= 0:
                     raise ValueError
                 
+                service_id = state.get('service_id')
                 service_name = state.get('service_name')
                 
-                # 💡 التعديل هنا: تخزين سعر الخدمة (والتي يجب أن تكون مُتطابقة مع Service ID في SMMKings)
-                #  يفضل تخزين Service ID، لكن بما أن هذا كان نموذجك، سنتبع هذا الأسلوب مؤقتاً
-                # الأفضل: sh_services[service_id] = {'name': service_name, 'price': service_price}
-                data_file.setdefault('sh_services', {})[service_name] = service_price
-                
-                save_bot_data({'sh_services': data_file.get('sh_services', {}), 'states': data_file.get('states', {})}) 
-                bot.send_message(chat_id, f"✅ تم إضافة خدمة الرشق `{service_name}` بسعر `{service_price}` روبل بنجاح!")
+                # 💡 استخدام الحقل الموحد: 'smmkings_services'
+                smmkings_services = data_file.get('smmkings_services', {})
+                if service_id in smmkings_services:
+                    smmkings_services[service_id]['user_price'] = new_price
+                    save_bot_data({'smmkings_services': smmkings_services})
+                    
+                    bot.send_message(chat_id, f"✅ تم تحديث سعر خدمة **{service_name}** إلى `{new_price}` روبل بنجاح!")
+                else:
+                    bot.send_message(chat_id, "❌ لم يتم العثور على الخدمة لتحديث سعرها.")
                 
                 del data_file['states'][str(user_id)]
                 save_bot_data({'states': data_file.get('states', {})})
+
             except ValueError:
-                bot.send_message(chat_id, "❌ السعر غير صحيح. يرجى إدخال رقم صحيح أكبر من صفر.")
+                bot.send_message(chat_id, "❌ السعر الجديد غير صحيح. يرجى إدخال رقم صحيح أكبر من صفر.")
         
         # 🆕 --- معالج إضافة رقم جاهز (الخطوة 2: استقبال جميع المعلومات) ---
         elif state and state.get('step') == 'waiting_for_ready_number_full_info':
@@ -312,6 +326,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
         data = call.data
         
         data_file = get_bot_data() 
+        state = data_file.get('states', {}).get(str(user_id))
 
         if data == 'admin_main_menu':
             show_admin_menu(chat_id, message_id)
@@ -403,13 +418,17 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
         
-        # 🆕 --- معالج جلب خدمات SMMKings API وتخزينها ---
+        # 🆕 --- معالج جلب خدمات SMMKings API وتخزينها (معالجة لخطأ 414) ---
         elif data == 'fetch_smmkings_services':
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🔄 جاري جلب خدمات SMMKings...")
-            
+            # 💡 يتم تعديل الرسالة فوراً قبل جلب البيانات لتجنب مشكلة الـ Timeout
+            try:
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🔄 جاري جلب خدمات SMMKings... (قد يستغرق وقتاً)")
+            except telebot.apihelper.ApiTelegramException:
+                pass # تجاهل إذا كانت الرسالة قد تم تعديلها بالفعل أو غير قابلة للتعديل
+
             services_data = smmkings_client.get_services()
             
-            if services_data.get('success') and services_data.get('services'):
+            if services_data and services_data.get('services'):
                 services_list = services_data['services']
                 smm_services_storage = {}
                 count = 0
@@ -426,9 +445,8 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                         'api_rate': float(service['rate']),
                         'min': int(service['min']),
                         'max': int(service['max']),
-                        # 💡 هنا يجب تحديد سعر البيع للمستخدم (ممكن تعيينه كنسبة مئوية من api_rate)
-                        # لتبسيط الأمر، سنتركه فارغاً ليتم تحديثه يدوياً أو بآلية نسبة لاحقاً
-                        'user_price': round(float(service['rate']) * 1.5), # مثال: إضافة 50% كربح
+                        # 💡 تعيين سعر بيع مبدئي أو الحفاظ على السعر القديم إذا وجد
+                        'user_price': data_file.get('smmkings_services', {}).get(service_id, {}).get('user_price', round(float(service['rate']) * 1.5)), 
                     }
                     count += 1
                 
@@ -436,13 +454,13 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 save_bot_data({'smmkings_services': smm_services_storage})
                 
                 message = f"✅ تم جلب وتخزين {count} خدمة من SMMKings بنجاح.\n\n"
-                message += "⚠️ تم تعيين سعر بيع تقريبي مبدئي لكل خدمة. يمكنك الآن تعديله من قائمة إدارة الرشق."
+                message += "⚠️ تم تعيين سعر بيع تقريبي مبدئي للخدمات الجديدة. يمكنك تعديله من قائمة إدارة الرشق."
             else:
-                error_msg = services_data.get('error', 'خطأ غير معروف')
+                error_msg = services_data.get('error', 'خطأ غير معروف') if services_data else 'فشل في الاتصال أو لم يتم إرجاع بيانات.'
                 message = f"❌ فشل جلب خدمات SMMKings: {error_msg}"
             
             markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='add_country'))
+            markup.row(types.InlineKeyboardButton('رجوع لقائمة الإدارة', callback_data='sh_admin_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
 
         elif data.startswith('add_country_service_'):
@@ -500,7 +518,8 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 else: # ViOTP محذوف، لكن للتأكد
                     api_countries = {}
             except Exception as e:
-                bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}')
+                # تم تغيير رسالة الخطأ
+                bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بواجهة API ({service}): {e}')
                 return
 
             if not api_countries:
@@ -582,26 +601,34 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             markup = types.InlineKeyboardMarkup()
             # 💡 يتم الآن إدارة الخدمات بشكل أساسي من جلب API ثم تعديلها
             markup.row(types.InlineKeyboardButton('🔄 جلب/تحديث خدمات SMMKings', callback_data='fetch_smmkings_services'))
-            markup.row(types.InlineKeyboardButton('✍️ تعديل سعر خدمة SMM', callback_data='edit_smm_service_price')) # وظيفة جديدة (سنضيف معالجها في الخطوة التالية)
-            markup.row(types.InlineKeyboardButton('عرض الخدمات 📄', callback_data='view_smmkings_services')) # تم تغيير الـ callback
+            markup.row(types.InlineKeyboardButton('✍️ تعديل سعر خدمة SMM', callback_data='edit_smm_service_price')) # وظيفة جديدة
+            markup.row(types.InlineKeyboardButton('عرض الخدمات المخزنة 📄', callback_data='view_smmkings_services')) # تم تغيير الـ callback
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 اختر الإجراء لإدارة خدمات الرشق:", reply_markup=markup)
 
-        # 🆕 --- معالج عرض خدمات SMMKings ---
+        # 🆕 --- معالج عرض خدمات SMMKings (يعرض من قاعدة البيانات) ---
         elif data == 'view_smmkings_services':
+            # 💡 استخدام الحقل الموحد: 'smmkings_services'
             smmkings_services = data_file.get('smmkings_services', {})
+            
             if not smmkings_services:
                 message = "❌ لا توجد خدمات SMMKings مخزنة حاليًا. يرجى جلبها أولاً."
             else:
-                message = "📄 **خدمات SMMKings المتاحة (الاسم والسعر للمستخدم):**\n\n"
+                # 💡 تقليل حجم الرسالة لتجنب مشكلة الـ 414 في بعض الحالات
+                services_list = []
                 for service_id, info in smmkings_services.items():
-                    message += f"• **{info.get('name', 'غير معروف')}**\n"
-                    message += f"  - `ID: {service_id}`\n"
-                    message += f"  - `سعر البيع: {info.get('user_price', 'غير محدد')}` روبل\n"
-                    message += f"  - `سعر API: {info.get('api_rate', 'غير محدد')}` USD\n"
-                    message += f"  - `الحد الأدنى: {info.get('min', 0)}`\n"
-                    message += f"  - `الحد الأقصى: {info.get('max', 0)}`\n"
-                    message += "-------------------\n"
+                    services_list.append(
+                        f"• **{info.get('name', 'غير معروف')}**\n"
+                        f"  - `ID: {service_id}` / `السعر: {info.get('user_price', 'غير محدد')} روبل`\n"
+                    )
+
+                message = f"📄 **خدمات SMMKings المتاحة (المخزنة):** ({len(services_list)} خدمة)\n\n"
+                # نستخدم فقط أول 15-20 خدمة في العرض للتلخيص
+                message += "\n".join(services_list[:20])
+                
+                if len(services_list) > 20:
+                    message += "\n..."
+                message += "\n\nللحصول على التفاصيل كاملة، استخدم 'تعديل سعر خدمة SMM'."
             
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
@@ -609,14 +636,19 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
 
         # 🆕 --- بدء تعديل سعر خدمة SMM ---
         elif data == 'edit_smm_service_price':
+            # 💡 استخدام الحقل الموحد: 'smmkings_services'
             smmkings_services = data_file.get('smmkings_services', {})
             if not smmkings_services:
+                # تغيير edit_message_text إلى send_message لضمان ظهور الرسالة
                 bot.send_message(chat_id, "❌ لا توجد خدمات SMMKings مخزنة لتعديلها. يرجى جلبها أولاً.")
                 return
 
             markup = types.InlineKeyboardMarkup()
+            # 💡 نستخدم جزء من الاسم والسعر الحالي في الزر
             for service_id, info in smmkings_services.items():
-                markup.add(types.InlineKeyboardButton(f"✍️ {info['name']} ({info.get('user_price', 0)} روبل)", callback_data=f'select_smm_to_edit_{service_id}'))
+                # تقليص طول اسم الخدمة للزر إذا كان طويلاً
+                name_short = (info['name'][:30] + '...') if len(info['name']) > 33 else info['name']
+                markup.add(types.InlineKeyboardButton(f"✍️ {name_short} ({info.get('user_price', 0)} روبل)", callback_data=f'select_smm_to_edit_{service_id}'))
             
             markup.add(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر خدمة SMM التي تريد تعديل سعرها:", reply_markup=markup)
@@ -624,6 +656,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
         # 🆕 --- اختيار الخدمة وبدء طلب السعر الجديد ---
         elif data.startswith('select_smm_to_edit_'):
             service_id = data.split('_')[-1]
+            # 💡 استخدام الحقل الموحد: 'smmkings_services'
             smmkings_services = data_file.get('smmkings_services', {})
             service_info = smmkings_services.get(service_id)
             
@@ -641,34 +674,12 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             message_text = (
                 f"تم اختيار خدمة: **{service_info['name']}**\n"
                 f"السعر الحالي: `{service_info.get('user_price', 'غير محدد')}` روبل.\n"
+                f"سعر API الأصلي: `{service_info.get('api_rate', 'غير محدد')}` USD.\n"
                 "الآن، أرسل **السعر الجديد** الذي تريد بيع الخدمة به للمستخدمين (بالروبل)."
             )
             bot.send_message(chat_id, message_text, parse_mode='Markdown')
-
-        # 🆕 --- معالج استقبال السعر الجديد وتحديث قاعدة البيانات ---
-        elif state and state.get('step') == 'waiting_for_new_smm_price':
-            try:
-                new_price = int(message.text)
-                if new_price <= 0:
-                    raise ValueError
-                
-                service_id = state.get('service_id')
-                service_name = state.get('service_name')
-                
-                smmkings_services = data_file.get('smmkings_services', {})
-                if service_id in smmkings_services:
-                    smmkings_services[service_id]['user_price'] = new_price
-                    save_bot_data({'smmkings_services': smmkings_services})
-                    
-                    bot.send_message(chat_id, f"✅ تم تحديث سعر خدمة **{service_name}** إلى `{new_price}` روبل بنجاح!")
-                else:
-                    bot.send_message(chat_id, "❌ لم يتم العثور على الخدمة لتحديث سعرها.")
-                
-                del data_file['states'][str(user_id)]
-                save_bot_data({'states': data_file.get('states', {})})
-
-            except ValueError:
-                bot.send_message(chat_id, "❌ السعر الجديد غير صحيح. يرجى إدخال رقم صحيح أكبر من صفر.")
+        
+        # ⚠️ باقي معالجات الكولباك لـ delete_country و view_active_requests لا تحتاج لتعديل جوهري لأنها لم تكن سبب المشكلة 414
         
         elif data.startswith('delete_country_service_'):
             service = data.split('_')[3]
@@ -739,7 +750,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             if nav_buttons:
                 markup.row(*nav_buttons)
             
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data='delete_country_service_{service}'))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data=f'delete_country_service_{service}'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر الدولة التي تريد حذفها: (صفحة {page}/{total_pages})", reply_markup=markup)
 
         elif data.startswith('confirm_delete_country_'):
@@ -767,7 +778,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             if not active_requests:
                 message = "📞 لا توجد طلبات نشطة حاليًا."
             else:
-                message = "📞 **الطلبات النشطة (الأرقام المؤجرة):**\n\n"
+                message = "📞 **الطلبات النشطة:**\n\n"
                 for user_id, request_data in active_requests.items():
                     message += f"**آيدي المستخدم:** `{user_id}`\n"
                     
