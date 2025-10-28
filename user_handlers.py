@@ -77,7 +77,7 @@ def format_success_message(order_id, country_name, country_flag, user_id, price,
 # =========================================================================
 
 # 💡 [التعديل هنا] - تمت إضافة smmkings_client
-def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, viotp_client, smsman_api, tiger_sms_client, smmkings_client):
+def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smsman_api, tiger_sms_client, smmkings_client):
     
     # دالة مساعدة للوصول إلى مخزون الأرقام الجاهزة
     def get_ready_numbers_stock():
