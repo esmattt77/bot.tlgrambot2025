@@ -3,6 +3,7 @@ import telebot.apihelper
 import json
 import time
 import logging
+from collections import defaultdict
 
 # تهيئة التسجيل
 logging.basicConfig(
@@ -13,6 +14,32 @@ logging.basicConfig(
 # *** مهم: يجب تحديد آيدي قناة الإشعارات هنا إذا كنت تريد نشر الإضافة تلقائيًا ***
 # SIM_CHANNEL_ID = -100xxxxxxxxxx # آيدي القناة الرقمي
 SIM_CHANNEL_ID = -1001158537466 # اتركه None إذا لم يكن لديك قناة للإشعارات
+
+# 💡 التعديل: قاموس ترجمة أسماء الخدمات والفئات من الإنجليزية إلى العربية
+SERVICE_TRANSLATIONS = {
+    "Instagram": "إنستقرام",
+    "Facebook": "فيسبوك",
+    "YouTube": "يوتيوب",
+    "TikTok": "تيك توك",
+    "Twitter": "تويتر",
+    "Telegram": "تليجرام",
+    "Spotify": "سبوتيفاي",
+    "Website Traffic": "زيارات مواقع",
+    "Views": "مشاهدات",
+    "Followers": "متابعين",
+    "Likes": "إعجابات",
+    "Comments": "تعليقات",
+    "Shares": "مشاركات",
+    "Members": "أعضاء",
+    "Reactions": "تفاعلات",
+    # يمكنك إضافة المزيد من الكلمات الشائعة هنا
+}
+
+def translate_service_name(name):
+    """دالة لترجمة الكلمات الرئيسية في اسم الخدمة إلى العربية."""
+    for en, ar in SERVICE_TRANSLATIONS.items():
+        name = name.replace(en, ar)
+    return name
 
 # 💡 --- MongoDB IMPORTS ---
 from db_manager import (
@@ -402,6 +429,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
             
         elif data == 'get_smsman_balance':
+            # 💡 تم تغيير طريقة استدعاء الدالة لضمان التكامل
             smsman_balance = smsman_api['get_smsman_balance']()
             message = f"💰 رصيد SMS.man الحالي: *{smsman_balance}* روبل." if smsman_balance is not False else "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
             markup = types.InlineKeyboardMarkup()
@@ -426,22 +454,30 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             except telebot.apihelper.ApiTelegramException:
                 pass # تجاهل إذا كانت الرسالة قد تم تعديلها بالفعل أو غير قابلة للتعديل
 
-            services_data = smmkings_client.get_services()
+            services_data = smmkings_client.get_services(force_reload=True) # 💡 فرض تحديث البيانات
             
             if services_data and services_data.get('services'):
-                services_list = services_data['services']
+                # 💡 الاستجابة هي قاموس مفتاحه هو Service ID
+                services_dict = services_data['services']
                 smm_services_storage = {}
                 count = 0
                 
                 # 💡 التخزين في 'smmkings_services' بدلاً من 'sh_services' لتجنب التداخل
-                for service in services_list:
+                for service_id, service in services_dict.items():
+                    
+                    # 💡 التعديل: تطبيق دالة الترجمة هنا على اسم الخدمة والفئة
+                    translated_category = translate_service_name(service['category'])
+                    translated_name = translate_service_name(service['name'])
+                    
+                    # 💡 دمج الاسم المترجم والفئة المترجمة
+                    final_service_name = f"[{translated_category}] {translated_name}"
+                    
                     # نستخدم 'service' (المعرف الرقمي) كمفتاح التخزين الأساسي
                     service_id = str(service['service']) 
-                    service_name = f"[{service['category']}] {service['name']}"
                     
                     # يتم تخزين سعر API الأساسي (rate) والحدود الدنيا والقصوى
                     smm_services_storage[service_id] = {
-                        'name': service_name,
+                        'name': final_service_name, # 💡 تخزين الاسم المعرب
                         'api_rate': float(service['rate']),
                         'min': int(service['min']),
                         'max': int(service['max']),
@@ -546,7 +582,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             if nav_buttons:
                 markup.row(*nav_buttons)
             
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data=f"add_country_service_{service}"))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='add_country'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر الدولة التي تريد إضافتها: (صفحة {page}/{total_pages})", reply_markup=markup)
 
         elif data.startswith('select_country_'):
@@ -616,19 +652,22 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             else:
                 # 💡 تقليل حجم الرسالة لتجنب مشكلة الـ 414 في بعض الحالات
                 services_list = []
-                for service_id, info in smmkings_services.items():
+                # 💡 الترتيب الأبجدي حسب اسم الخدمة لتسهيل القراءة
+                sorted_services = sorted(smmkings_services.items(), key=lambda item: item[1].get('name', ''))
+                
+                for service_id, info in sorted_services:
                     services_list.append(
                         f"• **{info.get('name', 'غير معروف')}**\n"
                         f"  - `ID: {service_id}` / `السعر: {info.get('user_price', 'غير محدد')} روبل`\n"
                     )
 
                 message = f"📄 **خدمات SMMKings المتاحة (المخزنة):** ({len(services_list)} خدمة)\n\n"
-                # نستخدم فقط أول 15-20 خدمة في العرض للتلخيص
-                message += "\n".join(services_list[:20])
+                # نستخدم فقط أول 25 خدمة في العرض للتلخيص
+                message += "\n".join(services_list[:25])
                 
-                if len(services_list) > 20:
+                if len(services_list) > 25:
                     message += "\n..."
-                message += "\n\nللحصول على التفاصيل كاملة، استخدم 'تعديل سعر خدمة SMM'."
+                message += "\n\nللحصول على التفاصيل الكاملة، استخدم 'تعديل سعر خدمة SMM'."
             
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
@@ -644,14 +683,18 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 return
 
             markup = types.InlineKeyboardMarkup()
+            # 💡 الترتيب الأبجدي حسب اسم الخدمة لتسهيل البحث
+            sorted_services = sorted(smmkings_services.items(), key=lambda item: item[1].get('name', ''))
+            
             # 💡 نستخدم جزء من الاسم والسعر الحالي في الزر
-            for service_id, info in smmkings_services.items():
+            for service_id, info in sorted_services:
                 # تقليص طول اسم الخدمة للزر إذا كان طويلاً
                 name_short = (info['name'][:30] + '...') if len(info['name']) > 33 else info['name']
                 markup.add(types.InlineKeyboardButton(f"✍️ {name_short} ({info.get('user_price', 0)} روبل)", callback_data=f'select_smm_to_edit_{service_id}'))
             
             markup.add(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر خدمة SMM التي تريد تعديل سعرها:", reply_markup=markup)
+            # 💡 تغيير الرسالة لتكون واضحة أكثر
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر خدمة SMM التي تريد تعديل سعرها: (مرتبة أبجدياً)", reply_markup=markup)
 
         # 🆕 --- اختيار الخدمة وبدء طلب السعر الجديد ---
         elif data.startswith('select_smm_to_edit_'):
@@ -750,7 +793,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             if nav_buttons:
                 markup.row(*nav_buttons)
             
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data=f'delete_country_service_{service}'))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='delete_country_service_{service}'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر الدولة التي تريد حذفها: (صفحة {page}/{total_pages})", reply_markup=markup)
 
         elif data.startswith('confirm_delete_country_'):
@@ -779,7 +822,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 message = "📞 لا توجد طلبات نشطة حاليًا."
             else:
                 message = "📞 **الطلبات النشطة:**\n\n"
-                for user_id, request_data in active_requests.items():
+                # 💡 الترتيب حسب وقت الإضافة (الطلب الأحدث أولاً)
+                sorted_requests = sorted(active_requests.items(), key=lambda item: item[1].get('request_time', 0), reverse=True)
+                
+                for user_id, request_data in sorted_requests:
                     message += f"**آيدي المستخدم:** `{user_id}`\n"
                     
                     # 💡 إضافة حقل 'is_smm' أو فحص مزود الخدمة
@@ -865,7 +911,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 message = "❌ لا توجد أرقام جاهزة في المخزون حاليًا."
             else:
                 message = "📄 **الأرقام الجاهزة في المخزون:**\n\n"
-                for phone, info in ready_numbers_stock.items():
+                # 💡 الترتيب حسب وقت الإضافة (الأحدث أولاً)
+                sorted_numbers = sorted(ready_numbers_stock.items(), key=lambda item: item[1].get('added_date', 0), reverse=True)
+                
+                for phone, info in sorted_numbers:
                     # إخفاء آخر 4 أرقام
                     num_hidden = info.get('number', 'غير متوفر')[:len(info.get('number', '')) - 4] + "••••"
                     message += f"• **الرقم:** `{num_hidden}`\n"
@@ -890,7 +939,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 return
 
             markup = types.InlineKeyboardMarkup()
-            for phone, info in ready_numbers_stock.items():
+            # 💡 الترتيب حسب وقت الإضافة (الأحدث أولاً)
+            sorted_numbers = sorted(ready_numbers_stock.items(), key=lambda item: item[1].get('added_date', 0), reverse=True)
+            
+            for phone, info in sorted_numbers:
                 # عرض جزء من الرقم والسعر فقط
                 num_hidden = phone[:len(phone) - 4] + "••••"
                 markup.add(types.InlineKeyboardButton(f"❌ {num_hidden} ({info.get('price', 0)} روبل)", callback_data=f'confirm_delete_ready_{phone}'))
