@@ -17,7 +17,8 @@ from db_manager import (
     get_user_doc 
 )
 
-def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_client):
+# ⭐️ التغيير الأول: استبدال viotp_client بـ smmkings_client
+def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_sms_client):
 
     # دالة مساعدة لتحديث الأرقام الجاهزة في المخزون الداخلي (تعتمد على save_bot_data)
     def update_ready_numbers_stock(stock_data=None, delete_key=None):
@@ -107,6 +108,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             save_bot_data({'states': data_file.get('states', {})})
             bot.send_message(chat_id, "📣 اكتمل البث بنجاح!")
         
+        # ⚠️ ملاحظة: تم إبقاء هذا الجزء لخدمات الأرقام الافتراضية (SMS/Tiger)
         elif state and state.get('step') == 'waiting_for_admin_price':
             try:
                 custom_price = int(message.text)
@@ -195,6 +197,9 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                 
                 service_name = state.get('service_name')
                 
+                # 💡 التعديل هنا: تخزين سعر الخدمة (والتي يجب أن تكون مُتطابقة مع Service ID في SMMKings)
+                #  يفضل تخزين Service ID، لكن بما أن هذا كان نموذجك، سنتبع هذا الأسلوب مؤقتاً
+                # الأفضل: sh_services[service_id] = {'name': service_name, 'price': service_price}
                 data_file.setdefault('sh_services', {})[service_name] = service_price
                 
                 save_bot_data({'sh_services': data_file.get('sh_services', {}), 'states': data_file.get('states', {})}) 
@@ -330,15 +335,17 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             save_bot_data({'states': data_file.get('states', {})})
             bot.send_message(chat_id, '➖ أرسل **آيدي المستخدم** الذي تريد خصم رصيد منه.')
         elif data == 'add_country':
+            # 💡 التعديل هنا: حذف ViOTP من القائمة
             markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('ViOTP', callback_data='add_country_service_viotp'))
             markup.row(types.InlineKeyboardButton('SMS.man', callback_data='add_country_service_smsman'))
             markup.row(types.InlineKeyboardButton('Tiger SMS', callback_data='add_country_service_tigersms'))
+            # 🆕 إضافة زر جلب خدمات SMMKings 
+            markup.row(types.InlineKeyboardButton('جلب خدمات SMMKings 🚀', callback_data='fetch_smmkings_services'))
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='🌐 اختر الخدمة لإضافة دولة:', reply_markup=markup)
         elif data == 'delete_country':
+            # 💡 التعديل هنا: حذف ViOTP من القائمة
             markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('ViOTP', callback_data='delete_country_service_viotp'))
             markup.row(types.InlineKeyboardButton('SMS.man', callback_data='delete_country_service_smsman'))
             markup.row(types.InlineKeyboardButton('Tiger SMS', callback_data='delete_country_service_tigersms'))
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
@@ -353,25 +360,32 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             data_file.setdefault('states', {})[str(user_id)] = {'step': 'waiting_for_broadcast_message'}
             save_bot_data({'states': data_file.get('states', {})})
             bot.send_message(chat_id, '📣 أرسل رسالتك للبث.')
+        
+        # 🆕 --- قائمة كشف الأرصدة (حذف ViOTP وإضافة SMMKings) ---
         elif data == 'show_api_balance_menu':
             markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('كشف رصيد ViOTP', callback_data='get_viotp_balance'))
+            # markup.row(types.InlineKeyboardButton('كشف رصيد ViOTP', callback_data='get_viotp_balance')) # محذوف
+            markup.row(types.InlineKeyboardButton('كشف رصيد SMMKings 🚀', callback_data='get_smmkings_balance')) # جديد
             markup.row(types.InlineKeyboardButton('كشف رصيد SMS.man', callback_data='get_smsman_balance'))
             markup.row(types.InlineKeyboardButton('كشف رصيد Tiger SMS', callback_data='get_tigersms_balance'))
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="💰 اختر الموقع الذي تريد كشف رصيده:", reply_markup=markup)
         
-        elif data == 'get_viotp_balance':
-            viotp_balance_data = viotp_client.get_balance()
-            if viotp_balance_data.get('success'):
-                viotp_balance = viotp_balance_data['data']['balance']
-                message = f"💰 رصيد ViOTP الحالي: *{viotp_balance}* روبل."
+        # 🆕 --- معالج كشف رصيد SMMKings ---
+        elif data == 'get_smmkings_balance':
+            smmkings_balance_data = smmkings_client.get_balance()
+            if smmkings_balance_data.get('success'):
+                balance = smmkings_balance_data.get('balance')
+                currency = smmkings_balance_data.get('currency', 'USD')
+                message = f"💰 رصيد SMMKings الحالي: *{balance}* {currency}."
             else:
-                message = "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
+                error_msg = smmkings_balance_data.get('error', 'خطأ غير معروف')
+                message = f"❌ فشل الاتصال بـ SMMKings. يرجى التأكد من مفتاح API: {error_msg}"
+            
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
-        
+            
         elif data == 'get_smsman_balance':
             smsman_balance = smsman_api['get_smsman_balance']()
             message = f"💰 رصيد SMS.man الحالي: *{smsman_balance}* روبل." if smsman_balance is not False else "❌ فشل الاتصال. يرجى التأكد من مفتاح API أو إعدادات الشبكة."
@@ -389,12 +403,55 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
         
+        # 🆕 --- معالج جلب خدمات SMMKings API وتخزينها ---
+        elif data == 'fetch_smmkings_services':
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🔄 جاري جلب خدمات SMMKings...")
+            
+            services_data = smmkings_client.get_services()
+            
+            if services_data.get('success') and services_data.get('services'):
+                services_list = services_data['services']
+                smm_services_storage = {}
+                count = 0
+                
+                # 💡 التخزين في 'smmkings_services' بدلاً من 'sh_services' لتجنب التداخل
+                for service in services_list:
+                    # نستخدم 'service' (المعرف الرقمي) كمفتاح التخزين الأساسي
+                    service_id = str(service['service']) 
+                    service_name = f"[{service['category']}] {service['name']}"
+                    
+                    # يتم تخزين سعر API الأساسي (rate) والحدود الدنيا والقصوى
+                    smm_services_storage[service_id] = {
+                        'name': service_name,
+                        'api_rate': float(service['rate']),
+                        'min': int(service['min']),
+                        'max': int(service['max']),
+                        # 💡 هنا يجب تحديد سعر البيع للمستخدم (ممكن تعيينه كنسبة مئوية من api_rate)
+                        # لتبسيط الأمر، سنتركه فارغاً ليتم تحديثه يدوياً أو بآلية نسبة لاحقاً
+                        'user_price': round(float(service['rate']) * 1.5), # مثال: إضافة 50% كربح
+                    }
+                    count += 1
+                
+                # حفظ الخدمات في حقل جديد في قاعدة البيانات
+                save_bot_data({'smmkings_services': smm_services_storage})
+                
+                message = f"✅ تم جلب وتخزين {count} خدمة من SMMKings بنجاح.\n\n"
+                message += "⚠️ تم تعيين سعر بيع تقريبي مبدئي لكل خدمة. يمكنك الآن تعديله من قائمة إدارة الرشق."
+            else:
+                error_msg = services_data.get('error', 'خطأ غير معروف')
+                message = f"❌ فشل جلب خدمات SMMKings: {error_msg}"
+            
+            markup = types.InlineKeyboardMarkup()
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='add_country'))
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+
         elif data.startswith('add_country_service_'):
             service = data.split('_')[3]
             markup = types.InlineKeyboardMarkup()
             
-            # --- أزرار التطبيقات (ViOTP/SMS.man) ---
-            if service == 'viotp' or service == 'smsman':
+            # --- أزرار التطبيقات (SMS.man) ---
+            if service == 'smsman':
+                # تم حذف ViOTP
                 markup.row(types.InlineKeyboardButton('واتساب 💬', callback_data=f"add_country_app_{service}_2_page_1"))
                 markup.row(types.InlineKeyboardButton('تليجرام 📢', callback_data=f"add_country_app_{service}_3_page_1"))
                 markup.row(types.InlineKeyboardButton('فيسبوك 🏆', callback_data=f"add_country_app_{service}_4_page_1"))
@@ -435,20 +492,13 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             page = int(parts[6])
 
             try:
-                # 💡 جلب الدول من API
-                if service == 'viotp':
-                    api_countries = {}
-                    api_services_data = viotp_client.get_services()
-                    if api_services_data.get('success') and 'data' in api_services_data:
-                        for item in api_services_data['data']:
-                            if str(item.get('service_id')) == str(app_id):
-                                for country in item.get('countries', []):
-                                    api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
-                                break
-                elif service == 'smsman':
+                # 💡 جلب الدول من API (تم حذف ViOTP)
+                if service == 'smsman':
                     api_countries = smsman_api['get_smsman_countries'](app_id)
                 elif service == 'tigersms':
                     api_countries = tiger_sms_client.get_countries(app_id)
+                else: # ViOTP محذوف، لكن للتأكد
+                    api_countries = {}
             except Exception as e:
                 bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}')
                 return
@@ -486,21 +536,14 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             app_id = parts[3]
             country_code = parts[4]
 
-            # 💡 جلب معلومات الدولة مرة أخرى للحصول على الاسم والسعر الأساسي
+            # 💡 جلب معلومات الدولة مرة أخرى للحصول على الاسم والسعر الأساسي (تم حذف ViOTP)
             try:
-                if service == 'viotp':
-                    api_countries = {}
-                    api_services_data = viotp_client.get_services()
-                    if api_services_data.get('success') and 'data' in api_services_data:
-                        for item in api_services_data['data']:
-                            if str(item.get('service_id')) == str(app_id):
-                                for country in item.get('countries', []):
-                                    api_countries[str(country['country_code'])] = {'name': country['country_name'], 'price': country['price']}
-                                break
-                elif service == 'smsman':
+                if service == 'smsman':
                     api_countries = smsman_api['get_smsman_countries'](app_id)
                 elif service == 'tigersms':
                     api_countries = tiger_sms_client.get_countries(app_id)
+                else:
+                    api_countries = {}
             except Exception as e:
                 bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}')
                 return
@@ -534,59 +577,106 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             save_bot_data({'states': data_file.get('states', {})})
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="✉️ أرسل **آيدي المستخدم** الذي تريد إرسال رسالة إليه.")
 
+        # 🚀 --- قائمة إدارة خدمات الرشق (SMM) ---
         elif data == 'sh_admin_menu':
             markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('➕ إضافة خدمة رشق', callback_data='add_sh_service'))
-            markup.row(types.InlineKeyboardButton('➖ حذف خدمة رشق', callback_data='delete_sh_service'))
-            markup.row(types.InlineKeyboardButton('عرض الخدمات 📄', callback_data='view_sh_services'))
+            # 💡 يتم الآن إدارة الخدمات بشكل أساسي من جلب API ثم تعديلها
+            markup.row(types.InlineKeyboardButton('🔄 جلب/تحديث خدمات SMMKings', callback_data='fetch_smmkings_services'))
+            markup.row(types.InlineKeyboardButton('✍️ تعديل سعر خدمة SMM', callback_data='edit_smm_service_price')) # وظيفة جديدة (سنضيف معالجها في الخطوة التالية)
+            markup.row(types.InlineKeyboardButton('عرض الخدمات 📄', callback_data='view_smmkings_services')) # تم تغيير الـ callback
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 اختر الإجراء لإدارة خدمات الرشق:", reply_markup=markup)
 
-        elif data == 'add_sh_service':
-            data_file.setdefault('states', {})[str(user_id)] = {'step': 'waiting_for_sh_service_name'}
-            save_bot_data({'states': data_file.get('states', {})})
-            bot.send_message(chat_id, "أرسل **اسم خدمة الرشق** (مثلاً: متابعين انستقرام).")
-
-        elif data == 'delete_sh_service':
-            markup = types.InlineKeyboardMarkup()
-            sh_services = data_file.get('sh_services', {})
-            if not sh_services:
-                bot.send_message(chat_id, "❌ لا توجد خدمات رشق لحذفها.")
-                return
-            for name, price in sh_services.items():
-                markup.add(types.InlineKeyboardButton(f"❌ {name} ({price} روبل)", callback_data=f'confirm_delete_sh_{name}'))
-            markup.add(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر الخدمة التي تريد حذفها:", reply_markup=markup)
-        
-        elif data.startswith('confirm_delete_sh_'):
-            service_name_to_delete = data.split('_', 2)[-1]
-            data_file = get_bot_data() 
-            if service_name_to_delete in data_file.get('sh_services', {}):
-                del data_file['sh_services'][service_name_to_delete]
-                save_bot_data({'sh_services': data_file.get('sh_services', {})})
-                bot.send_message(chat_id, f"✅ تم حذف خدمة `{service_name_to_delete}` بنجاح.")
+        # 🆕 --- معالج عرض خدمات SMMKings ---
+        elif data == 'view_smmkings_services':
+            smmkings_services = data_file.get('smmkings_services', {})
+            if not smmkings_services:
+                message = "❌ لا توجد خدمات SMMKings مخزنة حاليًا. يرجى جلبها أولاً."
             else:
-                bot.send_message(chat_id, "❌ الخدمة غير موجودة.")
-            handle_admin_callbacks(call)
-        
-        elif data == 'view_sh_services':
-            sh_services = data_file.get('sh_services', {})
-            if not sh_services:
-                message = "❌ لا توجد خدمات رشق متاحة حاليًا."
-            else:
-                message = "📄 **خدمات الرشق المتاحة:**\n\n"
-                for name, price in sh_services.items():
-                    message += f"• **{name}**: `{price}` روبل\n"
+                message = "📄 **خدمات SMMKings المتاحة (الاسم والسعر للمستخدم):**\n\n"
+                for service_id, info in smmkings_services.items():
+                    message += f"• **{info.get('name', 'غير معروف')}**\n"
+                    message += f"  - `ID: {service_id}`\n"
+                    message += f"  - `سعر البيع: {info.get('user_price', 'غير محدد')}` روبل\n"
+                    message += f"  - `سعر API: {info.get('api_rate', 'غير محدد')}` USD\n"
+                    message += f"  - `الحد الأدنى: {info.get('min', 0)}`\n"
+                    message += f"  - `الحد الأقصى: {info.get('max', 0)}`\n"
+                    message += "-------------------\n"
+            
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+
+        # 🆕 --- بدء تعديل سعر خدمة SMM ---
+        elif data == 'edit_smm_service_price':
+            smmkings_services = data_file.get('smmkings_services', {})
+            if not smmkings_services:
+                bot.send_message(chat_id, "❌ لا توجد خدمات SMMKings مخزنة لتعديلها. يرجى جلبها أولاً.")
+                return
+
+            markup = types.InlineKeyboardMarkup()
+            for service_id, info in smmkings_services.items():
+                markup.add(types.InlineKeyboardButton(f"✍️ {info['name']} ({info.get('user_price', 0)} روبل)", callback_data=f'select_smm_to_edit_{service_id}'))
+            
+            markup.add(types.InlineKeyboardButton('رجوع', callback_data='sh_admin_menu'))
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="اختر خدمة SMM التي تريد تعديل سعرها:", reply_markup=markup)
+
+        # 🆕 --- اختيار الخدمة وبدء طلب السعر الجديد ---
+        elif data.startswith('select_smm_to_edit_'):
+            service_id = data.split('_')[-1]
+            smmkings_services = data_file.get('smmkings_services', {})
+            service_info = smmkings_services.get(service_id)
+            
+            if not service_info:
+                bot.send_message(chat_id, "❌ لم يتم العثور على الخدمة المطلوبة.")
+                return
+
+            data_file.setdefault('states', {})[str(user_id)] = {
+                'step': 'waiting_for_new_smm_price', 
+                'service_id': service_id,
+                'service_name': service_info['name']
+            }
+            save_bot_data({'states': data_file.get('states', {})})
+            
+            message_text = (
+                f"تم اختيار خدمة: **{service_info['name']}**\n"
+                f"السعر الحالي: `{service_info.get('user_price', 'غير محدد')}` روبل.\n"
+                "الآن، أرسل **السعر الجديد** الذي تريد بيع الخدمة به للمستخدمين (بالروبل)."
+            )
+            bot.send_message(chat_id, message_text, parse_mode='Markdown')
+
+        # 🆕 --- معالج استقبال السعر الجديد وتحديث قاعدة البيانات ---
+        elif state and state.get('step') == 'waiting_for_new_smm_price':
+            try:
+                new_price = int(message.text)
+                if new_price <= 0:
+                    raise ValueError
+                
+                service_id = state.get('service_id')
+                service_name = state.get('service_name')
+                
+                smmkings_services = data_file.get('smmkings_services', {})
+                if service_id in smmkings_services:
+                    smmkings_services[service_id]['user_price'] = new_price
+                    save_bot_data({'smmkings_services': smmkings_services})
+                    
+                    bot.send_message(chat_id, f"✅ تم تحديث سعر خدمة **{service_name}** إلى `{new_price}` روبل بنجاح!")
+                else:
+                    bot.send_message(chat_id, "❌ لم يتم العثور على الخدمة لتحديث سعرها.")
+                
+                del data_file['states'][str(user_id)]
+                save_bot_data({'states': data_file.get('states', {})})
+
+            except ValueError:
+                bot.send_message(chat_id, "❌ السعر الجديد غير صحيح. يرجى إدخال رقم صحيح أكبر من صفر.")
         
         elif data.startswith('delete_country_service_'):
             service = data.split('_')[3]
             markup = types.InlineKeyboardMarkup()
             
-            # --- أزرار التطبيقات (ViOTP/SMS.man) ---
-            if service == 'viotp' or service == 'smsman':
+            # --- أزرار التطبيقات (SMS.man) ---
+            if service == 'smsman':
+                # تم حذف ViOTP
                 markup.row(types.InlineKeyboardButton('واتساب 💬', callback_data=f"delete_country_app_{service}_2_page_1"))
                 markup.row(types.InlineKeyboardButton('تليجرام 📢', callback_data=f"delete_country_app_{service}_3_page_1"))
                 markup.row(types.InlineKeyboardButton('فيسبوك 🏆', callback_data=f"delete_country_app_{service}_4_page_1"))
@@ -649,7 +739,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
             if nav_buttons:
                 markup.row(*nav_buttons)
             
-            markup.row(types.InlineKeyboardButton('رجوع', callback_data=f'delete_country_service_{service}'))
+            markup.row(types.InlineKeyboardButton('رجوع', callback_data='delete_country_service_{service}'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر الدولة التي تريد حذفها: (صفحة {page}/{total_pages})", reply_markup=markup)
 
         elif data.startswith('confirm_delete_country_'):
@@ -680,11 +770,21 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                 message = "📞 **الطلبات النشطة (الأرقام المؤجرة):**\n\n"
                 for user_id, request_data in active_requests.items():
                     message += f"**آيدي المستخدم:** `{user_id}`\n"
-                    message += f"**الطلب:** {request_data.get('service', 'غير معروف')} - {request_data.get('app_name', 'غير معروف')}\n"
-                    message += f"**رقم الهاتف:** `{request_data.get('phone_number', 'غير متوفر')}`\n"
+                    
+                    # 💡 إضافة حقل 'is_smm' أو فحص مزود الخدمة
+                    api_service = request_data.get('api_service', 'غير معروف')
+                    
+                    if api_service == 'smmkings':
+                         message += f"**الخدمة (رشق):** {request_data.get('service_name', 'غير معروف')}\n"
+                         message += f"**الرابط:** `{request_data.get('link', 'غير متوفر')}`\n"
+                         message += f"**الكمية:** `{request_data.get('quantity', 'غير متوفر')}`\n"
+                    else:
+                        message += f"**الطلب (أرقام):** {request_data.get('service', 'غير معروف')} - {request_data.get('app_name', 'غير معروف')}\n"
+                        message += f"**رقم الهاتف:** `{request_data.get('phone_number', 'غير متوفر')}`\n"
+                        message += f"**حالة الطلب:** `{request_data.get('status', 'غير معروف')}`\n"
+                        
                     message += f"**آيدي الطلب:** `{request_data.get('order_id', 'غير متوفر')}`\n"
-                    message += f"**حالة الطلب:** `{request_data.get('status', 'غير معروف')}`\n"
-                    message += f"**الموقع:** `{request_data.get('api_service', 'غير معروف')}`\n"
+                    message += f"**الموقع:** `{api_service}`\n"
                     message += "-------------------\n"
             
             markup = types.InlineKeyboardMarkup()
@@ -700,9 +800,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
         elif data == 'confirm_cancel_all_requests':
             data_file = get_bot_data()
             if 'active_requests' in data_file:
+                # 💡 ملاحظة مهمة: يجب تحذير المستخدم هنا بأن هذا يحذف السجل لكل من الأرقام وخدمات SMM.
                 data_file['active_requests'] = {}
                 save_bot_data({'active_requests': data_file['active_requests']})
-                bot.send_message(chat_id, "✅ تم مسح سجل الطلبات النشطة في البوت بنجاح. تذكر أن تلغيها يدويًا من واجهات API الخارجية إذا لزم الأمر.")
+                bot.send_message(chat_id, "✅ تم مسح سجل الطلبات النشطة في البوت بنجاح (يشمل الأرقام وخدمات الرشق). تذكر أن تلغيها يدويًا من واجهات API الخارجية إذا لزم الأمر.")
             else:
                 bot.send_message(chat_id, "❌ لا توجد طلبات نشطة في السجل لحذفها.")
             handle_admin_callbacks(call)
@@ -804,14 +905,16 @@ def setup_admin_handlers(bot, DEVELOPER_ID, viotp_client, smsman_api, tiger_sms_
                  handle_admin_callbacks(call)
 
 
+    # ⭐️ التغيير الثاني: تعديل قائمة المشرف الرئيسية
     def show_admin_menu(chat_id, message_id=None):
         markup = types.InlineKeyboardMarkup()
         markup.row(types.InlineKeyboardButton('إحصائيات البوت 📊', callback_data='bot_stats'), types.InlineKeyboardButton('إدارة المستخدمين 👥', callback_data='manage_users'))
         markup.row(types.InlineKeyboardButton('إضافة رصيد 💰', callback_data='add_balance'), types.InlineKeyboardButton('خصم رصيد 💸', callback_data='deduct_balance'))
-        markup.row(types.InlineKeyboardButton('إضافة دولة 🌐', callback_data='add_country'), types.InlineKeyboardButton('حذف دولة ❌', callback_data='delete_country'))
+        # 💡 تم تغيير زر "إضافة دولة" ليتضمن جلب خدمات SMM
+        markup.row(types.InlineKeyboardButton('إضافة/جلب خدمات 🌐', callback_data='add_country'), types.InlineKeyboardButton('حذف دولة ❌', callback_data='delete_country'))
+        markup.row(types.InlineKeyboardButton('إدارة الرشق 🚀', callback_data='sh_admin_menu'), types.InlineKeyboardButton('إدارة الأرقام الجاهزة 🔢', callback_data='ready_numbers_menu'))
         markup.row(types.InlineKeyboardButton('عرض الطلبات النشطة 📞', callback_data='view_active_requests'), types.InlineKeyboardButton('إلغاء جميع الطلبات 🚫', callback_data='cancel_all_requests'))
         markup.row(types.InlineKeyboardButton('إرسال رسالة جماعية 📣', callback_data='broadcast_message'))
-        markup.row(types.InlineKeyboardButton('إدارة الرشق 🚀', callback_data='sh_admin_menu'), types.InlineKeyboardButton('إدارة الأرقام الجاهزة 🔢', callback_data='ready_numbers_menu'))
         markup.row(types.InlineKeyboardButton('الكشف عن أرصدة المواقع 💳', callback_data='show_api_balance_menu'))
         
         text_message = "أهلاً بك في لوحة تحكم المشرف!"
