@@ -1,4 +1,4 @@
-from telebot import types
+From telebot import types
 import json
 import time
 import logging
@@ -21,6 +21,7 @@ CHANNELS_LIST = [CHANNEL_1_ID, CHANNEL_2_ID]
 CHANNEL_ID_FOR_NOTIFICATIONS = CHANNEL_2_ID # القناة التي سيتم إرسال إشعارات النجاح إليها
 
 # 💡 --- MongoDB IMPORTS ---
+# يتم افتراض وجود هذه الدوال في ملف db_manager.py
 from db_manager import (
     get_user_doc,
     update_user_balance,
@@ -47,7 +48,8 @@ def format_success_message(order_id, country_name, country_flag, user_id, price,
     user_id_str = str(user_id)
     masked_user_id = user_id_str[:-3] + "•••"
     
-    masked_phone_number = phone_number[:-4] + "••••"
+    # التعامل مع رقم الهاتف الذي قد يكون None في حال كان طلب SMM
+    masked_phone_number = (phone_number[:-4] + "••••") if phone_number and len(phone_number) > 4 else (phone_number if phone_number else 'N/A')
 
     # بناء نص الرسالة باستخدام F-string
     message = (
@@ -73,7 +75,6 @@ def format_success_message(order_id, country_name, country_flag, user_id, price,
 # 💡 [نهاية دالة تنسيق رسالة الإشعار]
 # =========================================================================
 
-# 🛑 ملاحظة هامة: تم حذف viotp_client من هذه الدالة
 def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman_api, tiger_sms_client):
     
     # دالة مساعدة للوصول إلى مخزون الأرقام الجاهزة
@@ -220,6 +221,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                              parse_mode='Markdown')
             return
         
+        # 💡 [معالج رسالة عادية غير معرفة]
+        else:
+            # يمكن تجاهل الرسائل النصية غير المعرفة هنا
+            pass
+        
     # 💡 [تعديل معالج Callbacks: تطبيق التحقق الإجباري ومعالج زر التحقق والإحالة]
     @bot.callback_query_handler(func=lambda call: call.from_user.id != DEVELOPER_ID)
     def handle_user_callbacks(call):
@@ -313,7 +319,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smm_services' - عرض الفئات من المخزن] - (تم تصحيح الـ Indentation)
+        # 🚀 [معالج 'smm_services' - عرض الفئات من المخزن] (مُعدَّل)
         # =========================================================================
         elif data == 'smm_services': 
             markup = types.InlineKeyboardMarkup()
@@ -343,7 +349,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             for category_name in sorted(categories_with_count.keys()):
                 count = categories_with_count[category_name]
                 
-                # 💡 التصحيح: استخدام طريقة تنظيف بسيطة وثابتة لاسم الكولباك داتا
+                # 💡 التعديل الحاسم: استخدم دالة .replace(' ', '_') فقط لإنشاء callback_data نظيف
                 clean_category_name = category_name.replace(' ', '_')
                 
                 # نرسل اسم الفئة النظيف وعدد الخدمات
@@ -359,14 +365,13 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smm_cat_' - عرض الخدمات داخل الفئة من المخزن] - (تم تصحيح الـ Indentation)
+        # 🚀 [معالج 'smm_cat_' - عرض الخدمات داخل الفئة من المخزن] (مُعدَّل)
         # =========================================================================
         elif data.startswith('smm_cat_'):
-            # استعادة اسم الفئة المشفر
-            # 💡 التصحيح: يجب استخدام split('_', 1) أو split('_', 2) حسب طريقة الترميز. الأفضل split('_', 1) إذا كان الاسم النظيف هو الجزء المتبقي.
-            clean_category_name_raw = data.split('_', 1)[-1] 
+            # 💡 التعديل الحاسم: استعادة اسم الفئة المشفر عبر إزالة المقدمة فقط
+            clean_category_name_raw = data.replace('smm_cat_', '', 1) 
             
-            # 💡 التصحيح: استعادة الاسم الأصلي للفئة بعكس عملية التنظيف (إعادة المسافات)
+            # 💡 استعادة الاسم الأصلي للفئة (للعرض في الرسالة)
             category_name = clean_category_name_raw.replace('_', ' ') 
             
             markup = types.InlineKeyboardMarkup()
@@ -377,10 +382,10 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             # 1. فلترة الخدمات حسب الفئة
             services_in_category = {}
             for s_id, s_info in all_smm_services.items():
-                # 💡 التصحيح: الفلترة باستخدام الاسم النظيف الذي تم إنشاؤه في الدالة السابقة
-                stored_clean_name = s_info.get('category_name', 'فئة عامة').replace(' ', '_')
+                stored_category_name = s_info.get('category_name', 'فئة عامة')
                 
-                if stored_clean_name == clean_category_name_raw:
+                # 💡 المنطق الجديد: قارن بين الاسم النظيف الذي تم تخزينه والاسم النظيف المستعاد من الكولباك
+                if stored_category_name.replace(' ', '_') == clean_category_name_raw: 
                     # التأكد من أن الخدمة تحتوي على جميع الحقول المطلوبة قبل إضافتها
                     if s_info.get('name') and s_info.get('rate') is not None:
                         services_in_category[s_id] = s_info
@@ -388,9 +393,13 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             if not services_in_category:
                 bot.answer_callback_query(call.id, "❌ لا توجد خدمات متاحة في هذه الفئة حاليًا.")
                 # 💡 تصحيح: الرجوع لقائمة الفئات بدلاً من رسالة خطأ صماء
-                return handle_user_callbacks(call) # إعادة استدعاء للرجوع لقائمة الفئات
+                markup.add(types.InlineKeyboardButton('🔙 - رجوع لقائمة الفئات', callback_data='smm_services'))
+                try:
+                    bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name}:*", parse_mode='Markdown', reply_markup=markup)
+                except:
+                    bot.send_message(chat_id, f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name}:*", parse_mode='Markdown', reply_markup=markup)
+                return
 
-                
             # 2. بناء الأزرار للخدمات
             for service_id, service_info in services_in_category.items():
                 name = service_info.get('name', f"خدمة #{service_id}")
@@ -467,9 +476,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
         elif data == 'saavmotamy':
             bot.send_message(chat_id, "👑 *خدمة الأرقام الملكية قادمة قريباً، تابعنا لمعرفة المزيد.*", parse_mode='Markdown')
-            return
-        elif data == 'assignment':
-            bot.send_message(chat_id, "💰 *يمكنك ربح روبل مجانية عن طريق مشاركة رابط الإحالة. عد للقائمة الرئيسية واضغط على 'رابط الإحالة'.*", parse_mode='Markdown')
             return
         elif data == 'readycard-10':
             bot.send_message(chat_id, "💳 *متجر الكروت متوفر الآن! تواصل مع الدعم لشراء كرت.*", parse_mode='Markdown')
@@ -583,7 +589,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 data_file = get_bot_data()
                 if number_key in data_file.get('ready_numbers_stock', {}):
                     del data_file['ready_numbers_stock'][number_key] 
-                    save_bot_data({'ready_numbers_stock': data_file['ready_numbers_stock']})
+                    save_bot_data(data_file) # حفظ كامل البيانات بعد التعديل
                 
                 # 5. تسجيل عملية الشراء
                 register_user(
@@ -674,7 +680,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown', reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back')))
             except telebot.apihelper.ApiTelegramException as e:
                 if "message is not modified" not in str(e):
-                    bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back')))
+                    bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
             return
             
         elif data.startswith('service_'):
@@ -685,22 +691,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             # 🛑 التعديل المطلوب: تم تغيير اسم السيرفر المعروض للمستخدم
             server_name = 'سيرفر 1' if service == 'smsman' else ('سيرفر 2' if service == 'tigersms' else 'غير معروف') 
 
-            if service == 'smmkings':
-                # تم حذف هذا الجزء من قائمة Buynum، ولكنه قد يُستخدم في مكان آخر (تم الإبقاء عليه كما هو في الكود الداخلي)
-                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2_page_1')) 
-                markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3_page_1'))
-                markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4_page_1'))
-                markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_5_page_1'))
-                markup.row(types.InlineKeyboardButton('⁞ تويتر 🚀', callback_data=f'show_countries_{service}_6_page_1'))
-                markup.row(types.InlineKeyboardButton('⁞ تيكتوك 🎬', callback_data=f"show_countries_{service}_7_page_1"))
-                markup.row(types.InlineKeyboardButton('⁞ قوقل 🌐', callback_data=f'show_countries_{service}_8_page_1'))
-                markup.row(types.InlineKeyboardButton('⁞ إيمو 🐦', callback_data=f'show_countries_{service}_9_page_1'))
-                markup.row(types.InlineKeyboardButton('⁞ سناب 🐬', callback_data=f'show_countries_{service}_11_page_1'))
-                markup.row(types.InlineKeyboardButton('⁞ OK 🌟', callback_data=f'show_countries_{service}_12_page_1'))
-                markup.row(types.InlineKeyboardButton('⁞ Viber 📲', callback_data=f'show_countries_{service}_16_page_1'))
-                markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13_page_1'))
-                markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14_page_1'))
-            elif service == 'smsman':
+            # 💡 تم حذف المنطق المكرر لـ SMMKings والتركيز على SmsMan و TigerSMS
+            if service == 'smsman':
                 markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2_page_1'))
                 markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3_page_1'))
                 markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4_page_1'))
@@ -740,20 +732,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             service, app_id = parts[2], parts[3]
             page = int(parts[5]) if len(parts) > 5 else 1
             
-            # 💡 محاولة جلب الدول من API SMMKings إذا كان السيرفر هو SMMKings
-            if service == 'smmkings':
-                try:
-                    # نفترض أن SMMKings API لديها دالة لجلب قائمة الدول لتطبيق معين
-                    countries_response = smm_kings_api.get_countries_by_service(app_id)
-                    # يجب أن تكون countries_response قاموساً: {country_code: {'name': '..', 'price': '..', 'flag': '..'}, ...}
-                    local_countries = countries_response
-                    
-                except Exception as e:
-                    logging.error(f"Error fetching SMMKings Countries for App {app_id}: {e}")
-                    local_countries = {}
-            else:
-                # للمواقع الأخرى (smsman, tigersms)، نعتمد على البيانات المحلية المخزنة
-                local_countries = data_file.get('countries', {}).get(service, {}).get(app_id, {})
+            # 💡 للمواقع الأخرى (smsman, tigersms)، نعتمد على البيانات المحلية المخزنة
+            local_countries = data_file.get('countries', {}).get(service, {}).get(app_id, {})
             
             if not local_countries:
                 bot.send_message(chat_id, '❌ لا توجد دول متاحة لهذا التطبيق حاليًا.')
@@ -773,10 +753,13 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 markup.row(types.InlineKeyboardButton(f"{info.get('name', code)} ({display_price} روبل)", callback_data=f'buy_{service}_{app_id}_{code}'))
             
             nav_buttons = []
+            # 💡 يتم تجميع الكولباك ليعمل مع TigerSMS و SmsMan
+            base_callback = f'show_countries_{service}_{app_id}_page_' 
+            
             if page > 1:
-                nav_buttons.append(types.InlineKeyboardButton('◀️ السابق', callback_data=f'show_countries_{service}_{app_id}_page_{page - 1}'))
+                nav_buttons.append(types.InlineKeyboardButton('◀️ السابق', callback_data=f'{base_callback}{page - 1}'))
             if page < total_pages:
-                nav_buttons.append(types.InlineKeyboardButton('التالي ▶️', callback_data=f'show_countries_{service}_{app_id}_page_{page + 1}'))
+                nav_buttons.append(types.InlineKeyboardButton('التالي ▶️', callback_data=f'{base_callback}{page + 1}'))
             if nav_buttons:
                 markup.row(*nav_buttons)
             
@@ -790,16 +773,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             
             bot.answer_callback_query(call.id, "✅ جاري معالجة طلب الرقم...")
 
-            # 💡 جلب معلومات الدولة والسعر (سواء من API SMMKings أو من البيانات المخزنة)
-            if service == 'smmkings':
-                # نفترض أن smm_kings_api لديها دالة لجلب معلومات الرقم لتطبيق/دولة
-                try:
-                    # 💡 يجب التأكد من أن country_info هنا يعيد اسم التطبيق والسعر
-                    country_info = smm_kings_api.get_country_info(app_id, country_code) 
-                except:
-                    country_info = {}
-            else:
-                country_info = data_file.get('countries', {}).get(service, {}).get(app_id, {}).get(country_code, {})
+            # 💡 جلب معلومات الدولة والسعر من البيانات المخزنة
+            country_info = data_file.get('countries', {}).get(service, {}).get(app_id, {}).get(country_code, {})
             
             price = country_info.get('price', 0)
             
@@ -809,16 +784,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
 
             # *** 1. الاتصال بالـ API وجلب الرقم ***
             result = None
-            if service == 'smmkings':
-                try:
-                    # 💡 يجب التأكد من أن هذه الدالة ترجع قاموساً يحتوي على 'success', 'id', و 'number'
-                    result = smm_kings_api.buy_number(app_id, country_code) 
-                    
-                except Exception as e:
-                    logging.error(f"SMMKings buy_number failed: {e}")
-                    result = None 
-                    
-            elif service == 'smsman':
+            if service == 'smsman':
                 # تم الإبقاء على كود smsman كما هو مع الإشارة إلى التعديل المطلوب لـ smsman_api.py
                 result = smsman_api['request_smsman_number'](app_id, country_code)
                 if result and 'request_id' in result:
@@ -971,6 +937,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 # ج. تعديل الرسالة الأصلية لوضع علامة (مكتمل) وإزالة الأزرار
                 try:
                     new_text = call.message.text.replace("••• Pending", "✅ Completed")
+                    # إزالة رسالة التحقق السابقة إذا وجدت
                     new_text = re.sub(r'\n\*تم التحقق الآن في .+\*\n', '', new_text) 
                     
                     bot.edit_message_text(
@@ -985,7 +952,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 # حذف الطلب من الطلبات النشطة
                 if request_id in active_requests:
                     del active_requests[request_id]
-                    save_bot_data({'active_requests': active_requests})
+                    save_bot_data(data_file)
                 
                 # 💡 هـ. إرسال المنشور الترويجي إلى القناة (الإضافة المطلوبة)
                 try:
