@@ -4,6 +4,7 @@ import json
 import time
 import logging
 from collections import defaultdict
+import re
 
 # تهيئة التسجيل
 logging.basicConfig(
@@ -94,8 +95,7 @@ def translate_service_name(name):
         
         # استخدام التعبير العادي للبحث عن الكلمة الإنجليزية ككلمة كاملة
         # (لحل مشكلة تطابق الأحرف الجزئي)
-        import re
-        # بحث حساس لحالة الأحرف
+        # 💡 تم استيراد re في البداية
         pattern = re.compile(r'\b' + re.escape(en) + r'\b', re.IGNORECASE) 
         name_title = pattern.sub(ar, name_title)
         
@@ -139,7 +139,11 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             stock.pop(delete_key, None)
             
         save_bot_data({'ready_numbers_stock': stock})
-        return stock
+        
+        # 🚨 سطر إضافي لضمان تحديث الكاش بعد الحفظ 
+        return get_bot_data().get('ready_numbers_stock', {})
+
+
     
     # -----------------------------------------------------------------------------------
     # دالة مساعدة لإنشاء أزرار التطبيقات (لتجنب التكرار)
@@ -187,6 +191,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
         chat_id = message.chat.id
         user_id = message.from_user.id
         
+        # 💡 عند كل رسالة جديدة، نتأكد من جلب أحدث ملف بيانات
         data_file = get_bot_data() 
         state = data_file.get('states', {}).get(str(user_id))
     
@@ -215,6 +220,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 del data_file['states'][str(user_id)]
                 save_bot_data({'states': data_file.get('states', {})})
                 bot.send_message(chat_id, f"✅ تم إضافة {amount} روبل إلى المستخدم ذو الآيدي: {target_id}")
+                
+                # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+                data_file = get_bot_data() 
+
             except ValueError:
                 bot.send_message(chat_id, "❌ المبلغ الذي أدخلته غير صحيح. يرجى إدخال رقم صحيح أكبر من صفر.")
         
@@ -235,6 +244,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 del data_file['states'][str(user_id)]
                 save_bot_data({'states': data_file.get('states', {})})
                 bot.send_message(chat_id, f"✅ تم خصم {amount} روبل من المستخدم ذو الآيدي: {target_id}")
+                
+                # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+                data_file = get_bot_data() 
+
             except ValueError:
                 bot.send_message(chat_id, "❌ المبلغ الذي أدخلته غير صحيح. يرجى إدخال رقم صحيح أكبر من صفر.")
 
@@ -255,6 +268,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 del data_file['states'][str(user_id)]
                 save_bot_data({'states': data_file.get('states', {}), 'countries': data_file.get('countries', {})}) 
                 bot.send_message(chat_id, f"✅ تم إضافة الدولة **{country_name}** بالرمز **{country_code}** والسعر **{custom_price}** روبل بنجاح لخدمة **{service}**!", parse_mode='Markdown')
+                
+                # 💡 إعادة جلب البيانات لضمان تحديث ملف Countries في الذاكرة
+                data_file = get_bot_data() 
+
             except ValueError:
                 bot.send_message(chat_id, "❌ السعر الذي أدخلته غير صحيح. يرجى إدخال رقم صحيح أكبر من صفر.")
         
@@ -270,6 +287,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             
             del data_file['states'][str(user_id)]
             save_bot_data({'states': data_file.get('states', {})})
+            
+            # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+            data_file = get_bot_data() 
+
 
         elif state and state.get('step') == 'waiting_for_get_user_info_id':
             target_id = message.text
@@ -290,6 +311,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 
             del data_file['states'][str(user_id)]
             save_bot_data({'states': data_file.get('states', {})})
+            
+            # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+            data_file = get_bot_data() 
+
         
         # --- معالج إرسال رسالة فردية ---
         elif state and state.get('step') == 'waiting_for_send_message_to_user_id':
@@ -308,6 +333,9 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             finally:
                 del data_file['states'][str(user_id)]
                 save_bot_data({'states': data_file.get('states', {})})
+                
+                # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+                data_file = get_bot_data() 
         
         # --- معالج رسالة جماعية ---
         elif state and state.get('step') == 'waiting_for_broadcast_message':
@@ -320,6 +348,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             del data_file['states'][str(user_id)]
             save_bot_data({'states': data_file.get('states', {})})
             bot.send_message(chat_id, "📣 اكتمل البث بنجاح!")
+            
+            # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+            data_file = get_bot_data() 
+
 
         # --- معالج تحديث سعر خدمة SMM ---
         elif state and state.get('step') == 'waiting_for_new_smm_price':
@@ -335,12 +367,18 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                     smmkings_services[service_id]['user_price'] = new_price
                     save_bot_data({'smmkings_services': smmkings_services})
                     
+                    # 🚨 السطر الذي يحل المشكلة! إعادة جلب البيانات لتحديث الذاكرة المؤقتة للبوت.
+                    data_file = get_bot_data() 
+
                     bot.send_message(chat_id, f"✅ تم تحديث سعر خدمة **{service_name}** إلى `{new_price}` روبل بنجاح!")
                 else:
                     bot.send_message(chat_id, "❌ لم يتم العثور على الخدمة لتحديث سعرها.")
                 
                 del data_file['states'][str(user_id)]
                 save_bot_data({'states': data_file.get('states', {})})
+                
+                # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+                data_file = get_bot_data() 
 
             except ValueError:
                 bot.send_message(chat_id, "❌ السعر الجديد غير صحيح. يرجى إدخال رقم صحيح أكبر من صفر.")
@@ -378,6 +416,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 code = code.replace('-', '').strip()
                 stock_key = number
                 
+                # استخدام الدالة المساعدة للتحديث
                 update_ready_numbers_stock(stock_data={
                     stock_key: {
                         'country': country,
@@ -393,6 +432,9 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 
                 del data_file['states'][str(user_id)]
                 save_bot_data({'states': data_file.get('states', {})}) 
+                
+                # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+                data_file = get_bot_data()
                 
                 num_hidden = number[:len(number) - 4] + "••••"
                 message_to_admin = (
@@ -436,6 +478,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
         message_id = call.message.message_id
         data = call.data
         
+        # 💡 عند كل كولباك، نتأكد من جلب أحدث ملف بيانات
         data_file = get_bot_data() 
         state = data_file.get('states', {}).get(str(user_id))
 
@@ -457,22 +500,37 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             data_file.setdefault('states', {})[str(user_id)] = {'step': 'waiting_for_add_coin_id'}
             save_bot_data({'states': data_file.get('states', {})})
             bot.send_message(chat_id, '➕ أرسل **آيدي المستخدم** الذي تريد إضافة رصيد له.')
+            # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+            data_file = get_bot_data() 
+
         elif data == 'deduct_balance':
             data_file.setdefault('states', {})[str(user_id)] = {'step': 'waiting_for_deduct_coin_id'}
             save_bot_data({'states': data_file.get('states', {})})
             bot.send_message(chat_id, '➖ أرسل **آيدي المستخدم** الذي تريد خصم رصيد منه.')
+            # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+            data_file = get_bot_data() 
+
         elif data == 'check_user_balance':
             data_file.setdefault('states', {})[str(user_id)] = {'step': 'waiting_for_check_user_id'}
             save_bot_data({'states': data_file.get('states', {})})
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="💰 أرسل **آيدي المستخدم** للتحقق من رصيده.")
+            # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+            data_file = get_bot_data() 
+
         elif data == 'get_user_info':
             data_file.setdefault('states', {})[str(user_id)] = {'step': 'waiting_for_get_user_info_id'}
             save_bot_data({'states': data_file.get('states', {})})
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="👤 أرسل **آيدي المستخدم** للحصول على معلوماته.")
+            # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+            data_file = get_bot_data() 
+
         elif data == 'send_message_to_user':
             data_file.setdefault('states', {})[str(user_id)] = {'step': 'waiting_for_send_message_to_user_id'}
             save_bot_data({'states': data_file.get('states', {})})
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="✉️ أرسل **آيدي المستخدم** الذي تريد إرسال رسالة إليه.")
+            # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+            data_file = get_bot_data() 
+
         
         # --- الإحصائيات والبث ---
         elif data == 'bot_stats':
@@ -485,6 +543,8 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             data_file.setdefault('states', {})[str(user_id)] = {'step': 'waiting_for_broadcast_message'}
             save_bot_data({'states': data_file.get('states', {})})
             bot.send_message(chat_id, '📣 أرسل رسالتك للبث.')
+            # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+            data_file = get_bot_data() 
 
         # --- إدارة أرصدة المواقع ---
         elif data == 'show_api_balance_menu':
@@ -548,6 +608,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 smm_services_storage = {}
                 count = 0
                 
+                # 💡 يجب إعادة جلب بيانات البوت هنا لضمان الحصول على أحدث نسخة 
+                # خاصة إذا كان هناك تحديث لأسماء الحقول
+                data_file = get_bot_data() 
+
                 for service_id, service in services_dict.items():
                     # *** تطبيق الترجمة المُحسّنة هنا ***
                     translated_category = translate_service_name(service['category'])
@@ -569,6 +633,9 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 
                 save_bot_data({'smmkings_services': smm_services_storage})
                 
+                # 💡 إعادة جلب البيانات لضمان تحديث ملف SMM Services في الذاكرة
+                data_file = get_bot_data() 
+
                 message = f"✅ تم جلب وتخزين {count} خدمة من SMMKings بنجاح.\n\n⚠️ تذكر أن ترجمة الأسماء تعتمد على قاموس البوت. إذا وجدت كلمات لم تُترجم، يمكنك إضافتها لقاموس `SERVICE_TRANSLATIONS` ثم إعادة الجلب."
             else:
                 error_msg = services_data.get('error', 'خطأ غير معروف') if services_data else 'فشل في الاتصال أو لم يتم إرجاع بيانات.'
@@ -671,6 +738,9 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             }
             save_bot_data({'states': data_file.get('states', {})})
             
+            # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+            data_file = get_bot_data() 
+
             message_text = (
                 f"تم اختيار خدمة: **{service_info['name']}**\n"
                 f"السعر الحالي: `{service_info.get('user_price', 'غير محدد')}` روبل.\n"
@@ -761,6 +831,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 'country_code': country_code, 'country_name': country_name
             }
             save_bot_data({'states': data_file.get('states', {})})
+            
+            # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+            data_file = get_bot_data() 
+
             bot.send_message(chat_id, f"تم اختيار **{country_name}** بسعر أساسي **{api_price}** روبل.\n\nالآن أرسل **السعر الذي تريد بيعه للمستخدمين**.", parse_mode='Markdown')
         
         # -------------------------------------------------------------------------------
@@ -816,7 +890,9 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             parts = data.split('_')
             service, app_id, country_code = parts[3], parts[4], parts[5]
             
+            # 💡 يجب أن نستخدم get_bot_data() هنا لضمان الحصول على أحدث نسخة قبل الحذف
             data_file = get_bot_data()
+            
             # منطق الحذف
             if service in data_file.get('countries', {}) and app_id in data_file['countries'][service] and country_code in data_file['countries'][service][app_id]:
                 country_name = data_file['countries'][service][app_id][country_code]['name']
@@ -825,6 +901,9 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 if not data_file.get('countries', {}).get(service): del data_file['countries'][service]
                 save_bot_data({'countries': data_file.get('countries', {})})
                 bot.send_message(chat_id, f"✅ تم حذف الدولة **{country_name}** بنجاح.")
+
+                # 💡 إعادة جلب البيانات لضمان تحديث ملف Countries في الذاكرة
+                data_file = get_bot_data() 
             else:
                 bot.send_message(chat_id, "❌ لم يتم العثور على هذه الدولة في قائمة الدول المضافة.")
             
@@ -882,6 +961,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             if 'active_requests' in data_file:
                 data_file['active_requests'] = {}
                 save_bot_data({'active_requests': data_file['active_requests']})
+                
+                # 💡 إعادة جلب البيانات لضمان تحديث ملف Active Requests في الذاكرة
+                data_file = get_bot_data() 
+
                 bot.send_message(chat_id, "✅ تم مسح سجل الطلبات النشطة في البوت بنجاح (يشمل الأرقام وخدمات الرشق).")
             else:
                 bot.send_message(chat_id, "❌ لا توجد طلبات نشطة في السجل لحذفها.")
@@ -901,6 +984,9 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             data_file['states'][str(user_id)] = {'step': 'waiting_for_ready_number_full_info'}
             save_bot_data({'states': data_file.get('states', {})})
             
+            # 💡 إعادة جلب البيانات لضمان تحديث ملف States في الذاكرة
+            data_file = get_bot_data() 
+
             message_prompt = (
                 "🔰 - أرسل معلومات الرقم الجاهز بالصيغة التالية (في أسطر متتالية):\n\n"
                 "1⃣ الاسم (الدولة/البلد) :-\n"
@@ -957,10 +1043,14 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
         elif data.startswith('confirm_delete_ready_'):
             phone_to_delete = data.split('_', 2)[-1]
             update_ready_numbers_stock(delete_key=phone_to_delete)
+            
+            # 💡 إعادة جلب البيانات لضمان تحديث ملف Ready Numbers في الذاكرة
+            data_file = get_bot_data() 
+            
             num_hidden = phone_to_delete[:len(phone_to_delete) - 4] + "••••"
             bot.send_message(chat_id, f"✅ تم حذف الرقم الجاهز **{num_hidden}** من المخزون بنجاح.")
             
-            if not get_bot_data().get('ready_numbers_stock', {}):
+            if not data_file.get('ready_numbers_stock', {}):
                  bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="❌ لا توجد أرقام متبقية في المخزون لحذفها.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('رجوع', callback_data='ready_numbers_menu')))
             else:
                  call.data = 'delete_ready_number_start'
