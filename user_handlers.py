@@ -62,7 +62,7 @@ def format_success_message(order_id, country_name, country_flag, user_id, price,
         f"➖ الـسعر : ₽ {price:.2f} 💙•\n"
         f"➖ الرقم : {masked_phone_number}\n"
         f"➖ الكود : [ {code} ]💡\n"
-        f"➖ المرسل : {service_name} 🧿•\n" # تم التعديل على service_name
+        f"➖ المرسل : {service_name} 🧿•\n" 
         f"➖ الحالة : تم التفعيل ✅•\n"
         f"➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖\n"
         f"📆 {date_time_str}"
@@ -101,7 +101,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             elif request_id_int is not None and str(p_request_id) == str(request_id_int):
                 is_match = True
             
-            # حالة الطلب لا يجب أن تكون مكتملة أو ملغاة مسبقاً
+            # حالة الطلب لا يجب أن تكون مكتملة أو ملغاة مسبقاً (تشمل SMM أيضاً)
             if is_match and p.get('status') not in ['completed', 'cancelled', 'ready_number_purchased', 'smm_completed', 'smm_cancelled']: 
                 
                 # وجدنا الطلب، نُعيد معلوماته لاسترجاع الرصيد
@@ -139,7 +139,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
     def show_main_menu(chat_id, message_id=None):
         markup = types.InlineKeyboardMarkup()
         markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
-        markup.row(types.InlineKeyboardButton('💰︙شحن رصيدك', callback_data='Payment'), types.InlineKeyboardButton('👤︙قسم الرشق', callback_data='smm_services')) # 💡 تم تغيير 'sh' إلى 'smm_services'
+        markup.row(types.InlineKeyboardButton('💰︙شحن رصيدك', callback_data='Payment'), types.InlineKeyboardButton('👤︙قسم الرشق', callback_data='smm_services')) 
         markup.row(types.InlineKeyboardButton('🅿️︙كشف الحساب', callback_data='Record'), types.InlineKeyboardButton('🛍︙قسم العروض', callback_data='Wo'))
         markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
         markup.row(types.InlineKeyboardButton('🔗︙رابط الإحالة (0.25 ₽)', callback_data='invite_link')) 
@@ -313,94 +313,90 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         # =========================================================================
-        # 🚀 [تعديل معالج 'smm_services' إلى 'smm_services' - عرض الفئات من المخزن]
+        # 🚀 [معالج 'smm_services' - عرض الفئات من المخزن] - (تم تصحيح الـ Indentation)
         # =========================================================================
-# =========================================================================
-# 🚀 [تعديل معالج 'smm_services' - عرض الفئات من المخزن]
-# =========================================================================
         elif data == 'smm_services': 
-    markup = types.InlineKeyboardMarkup()
-    
-    # 1. جلب الخدمات المخزنة محلياً
-    bot_data = get_bot_data()
-    # 💡 يجب أن يكون الحقل الآن 'smmkings_services' بعد التعديل في db_manager.py
-    all_smm_services = bot_data.get('smmkings_services', {}) 
-    
-    if not all_smm_services:
-        bot.answer_callback_query(call.id, "❌ لا توجد فئات لخدمات الرشق متاحة حاليًا.")
-        return
-        
-    # 2. استخراج الفئات الفريدة (مع حساب عدد الخدمات داخل كل فئة)
-    categories_with_count = {}
-    for service_id, info in all_smm_services.items():
-        category_name = info.get('category_name', 'فئة عامة')
-        # التأكد من أن الخدمة تحتوي على اسم وسعر قبل إضافتها للفئة
-        if info.get('name') and info.get('rate'):
-             categories_with_count[category_name] = categories_with_count.get(category_name, 0) + 1
-    
-    # 3. بناء الأزرار للفئات
-    for category_name in sorted(categories_with_count.keys()):
-        count = categories_with_count[category_name]
-        
-        # 💡 التصحيح: استخدام طريقة تنظيف بسيطة وثابتة لاسم الكولباك داتا
-        # نستخدم دالة hash بسيطة أو نعتمد على استبدال الأحرف العربية بعلامة واحدة
-        # هنا سنعتمد على استبدال المسافات فقط ونترك الكود العربي كما هو
-        clean_category_name = category_name.replace(' ', '_')
-        
-        # نرسل اسم الفئة النظيف وعدد الخدمات
-        markup.add(types.InlineKeyboardButton(f"🔗 {category_name} ({count} خدمات)", callback_data=f'smm_cat_{clean_category_name}'))
-        
-    if not categories_with_count:
-        bot.answer_callback_query(call.id, "❌ لم يتم العثور على أي خدمات نشطة في أي فئة.")
-        markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
-        try:
-             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
-        except:
-             bot.send_message(chat_id, "🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
-        return
-        
-    markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
-    
-    try:
-        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
-    except telebot.apihelper.ApiTelegramException as e:
-        if "message is not modified" not in str(e):
-            bot.send_message(chat_id, "🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
-    return
-
-# =========================================================================
-# 🚀 [معالج 'smm_cat_' - عرض الخدمات داخل الفئة من المخزن]
-# =========================================================================
-elif data.startswith('smm_cat_'):
-    # استعادة اسم الفئة المشفر
-    clean_category_name_raw = data.split('_', 2)[-1]
-    
-    # 💡 التصحيح: استعادة الاسم الأصلي للفئة بعكس عملية التنظيف (إعادة المسافات)
-    category_name = clean_category_name_raw.replace('_', ' ') 
-    
-    markup = types.InlineKeyboardMarkup()
-    
-    bot_data = get_bot_data()
-    all_smm_services = bot_data.get('smmkings_services', {})
-
-    # 1. فلترة الخدمات حسب الفئة
-    services_in_category = {}
-    for s_id, s_info in all_smm_services.items():
-        # 💡 التصحيح: الفلترة باستخدام الاسم النظيف الذي تم إنشاؤه في الدالة السابقة
-        stored_clean_name = s_info.get('category_name', 'فئة عامة').replace(' ', '_')
-        
-        if stored_clean_name == clean_category_name_raw:
-             # التأكد من أن الخدمة تحتوي على جميع الحقول المطلوبة قبل إضافتها
-             if s_info.get('name') and s_info.get('rate'):
-                 services_in_category[s_id] = s_info
+            markup = types.InlineKeyboardMarkup()
             
-    if not services_in_category:
-        bot.answer_callback_query(call.id, "❌ لا توجد خدمات متاحة في هذه الفئة حاليًا.")
-        return
-        
-    # ... (باقي كود بناء أزرار الخدمات كما هو)
-    # ...
-    
+            # 1. جلب الخدمات المخزنة محلياً
+            bot_data = get_bot_data()
+            all_smm_services = bot_data.get('smmkings_services', {}) 
+            
+            if not all_smm_services:
+                bot.answer_callback_query(call.id, "❌ لا توجد فئات لخدمات الرشق متاحة حاليًا.")
+                markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
+                try:
+                    bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
+                except:
+                    bot.send_message(chat_id, "🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
+                return
+                
+            # 2. استخراج الفئات الفريدة (مع حساب عدد الخدمات داخل كل فئة)
+            categories_with_count = {}
+            for service_id, info in all_smm_services.items():
+                category_name = info.get('category_name', 'فئة عامة')
+                # التأكد من أن الخدمة تحتوي على اسم وسعر قبل إضافتها للفئة
+                if info.get('name') and info.get('rate'):
+                    categories_with_count[category_name] = categories_with_count.get(category_name, 0) + 1
+            
+            if not categories_with_count:
+                bot.answer_callback_query(call.id, "❌ لم يتم العثور على أي خدمات نشطة في أي فئة.")
+                markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
+                try:
+                    bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
+                except:
+                    bot.send_message(chat_id, "🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
+                return
+            
+            # 3. بناء الأزرار للفئات
+            for category_name in sorted(categories_with_count.keys()):
+                count = categories_with_count[category_name]
+                
+                # 💡 التصحيح: استخدام طريقة تنظيف بسيطة وثابتة لاسم الكولباك داتا
+                clean_category_name = category_name.replace(' ', '_')
+                
+                # نرسل اسم الفئة النظيف وعدد الخدمات
+                markup.add(types.InlineKeyboardButton(f"🔗 {category_name} ({count} خدمات)", callback_data=f'smm_cat_{clean_category_name}'))
+                
+            markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
+            
+            try:
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
+            except telebot.apihelper.ApiTelegramException as e:
+                if "message is not modified" not in str(e):
+                    bot.send_message(chat_id, "🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
+            return
+
+        # =========================================================================
+        # 🚀 [معالج 'smm_cat_' - عرض الخدمات داخل الفئة من المخزن] - (تم تصحيح الـ Indentation)
+        # =========================================================================
+        elif data.startswith('smm_cat_'):
+            # استعادة اسم الفئة المشفر
+            # 💡 التصحيح: يجب استخدام split('_', 1) أو split('_', 2) حسب طريقة الترميز. الأفضل split('_', 1) إذا كان الاسم النظيف هو الجزء المتبقي.
+            clean_category_name_raw = data.split('_', 1)[-1] 
+            
+            # 💡 التصحيح: استعادة الاسم الأصلي للفئة بعكس عملية التنظيف (إعادة المسافات)
+            category_name = clean_category_name_raw.replace('_', ' ') 
+            
+            markup = types.InlineKeyboardMarkup()
+            
+            bot_data = get_bot_data()
+            all_smm_services = bot_data.get('smmkings_services', {})
+
+            # 1. فلترة الخدمات حسب الفئة
+            services_in_category = {}
+            for s_id, s_info in all_smm_services.items():
+                # 💡 التصحيح: الفلترة باستخدام الاسم النظيف الذي تم إنشاؤه في الدالة السابقة
+                stored_clean_name = s_info.get('category_name', 'فئة عامة').replace(' ', '_')
+                
+                if stored_clean_name == clean_category_name_raw:
+                    # التأكد من أن الخدمة تحتوي على جميع الحقول المطلوبة قبل إضافتها
+                    if s_info.get('name') and s_info.get('rate'):
+                        services_in_category[s_id] = s_info
+                
+            if not services_in_category:
+                bot.answer_callback_query(call.id, "❌ لا توجد خدمات متاحة في هذه الفئة حاليًا.")
+                return
                 
             # 2. بناء الأزرار للخدمات
             for service_id, service_info in services_in_category.items():
@@ -408,8 +404,7 @@ elif data.startswith('smm_cat_'):
                 min_order = service_info.get('min', 'Min')
                 rate_api = float(service_info.get('rate', '0.00'))
                 
-                # 💡 افتراض سعر بيع للمستخدم (يجب جلب هذا من إعدادات المشرف)
-                # نستخدم سعر API * 2 مؤقتاً للتوضيح (1.0 USD = 2.0 RUB)
+                # 💡 افتراض سعر بيع للمستخدم (سعر API * 2 مؤقتاً)
                 user_rate_per_k = rate_api * 2 
                 
                 # نستخدم 'smm_order_SERVICE_ID' للانتقال إلى شاشة الطلب
@@ -469,8 +464,8 @@ elif data.startswith('smm_cat_'):
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown', reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('❌ إلغاء الطلب', callback_data='smm_services')))
             return
 
-        # 💡 [نهاية معالجات SMMKings - (التنفيذ سيكون في دالة handle_smm_order)]
-        
+        # 💡 [نهاية معالجات SMMKings الأساسية]
+
         elif data == 'Wo':
             bot.send_message(chat_id, "🛍 *لا توجد عروض خاصة متاحة حالياً. تابعنا للحصول على التحديثات!*", parse_mode='Markdown')
             return
@@ -488,7 +483,6 @@ elif data.startswith('smm_cat_'):
             return
 
         # 🆕 --- قائمة الأرقام الجاهزة (العرض) ---
-        # (باقي كود الأرقام الجاهزة كما هو...)
         elif data == 'ready':
             ready_numbers_stock = get_ready_numbers_stock()
             
@@ -512,7 +506,6 @@ elif data.startswith('smm_cat_'):
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🔰 *الأرقام الجاهزة المتاحة حالياً:*", parse_mode='Markdown', reply_markup=markup)
 
         # 🆕 --- تأكيد الشراء (الصيغة المطلوبة الأولى) ---
-        # (باقي كود تأكيد الشراء كما هو...)
         elif data.startswith('confirm_buy_ready_'):
             # رقم الهاتف بالكامل هو key
             number_key = data.split('_', 3)[-1] 
@@ -549,7 +542,6 @@ elif data.startswith('smm_cat_'):
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown', reply_markup=markup)
 
         # 🆕 --- تنفيذ الشراء (الصيغة المطلوبة الثانية) ---
-        # (باقي كود تنفيذ الشراء كما هو...)
         elif data.startswith('execute_buy_ready_'):
             # رقم الهاتف بالكامل هو key
             number_key = data.split('_', 3)[-1] 
@@ -660,7 +652,7 @@ elif data.startswith('smm_cat_'):
 
         elif data == 'Buynum':
             markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('سيرفر 1 (SMMKings)', callback_data='service_smmkings')) # 💡 تم استبدال viotp بـ smmkings
+            markup.row(types.InlineKeyboardButton('سيرفر 1 (SMMKings)', callback_data='service_smmkings')) 
             markup.row(types.InlineKeyboardButton('سيرفر 2 (SmsMan)', callback_data='service_smsman'))
             markup.row(types.InlineKeyboardButton('سيرفر 3 (TigerSMS)', callback_data='service_tigersms'))
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
@@ -697,9 +689,8 @@ elif data.startswith('smm_cat_'):
             service = parts[1]
             markup = types.InlineKeyboardMarkup()
             
-            # 🛑 تم حذف VIOTP
-            if service == 'smmkings': # 💡 تم استبدال viotp بـ smmkings
-                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2_page_1')) # نفترض أن IDs الخدمات هي نفسها مؤقتاً
+            if service == 'smmkings':
+                markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2_page_1')) 
                 markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3_page_1'))
                 markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4_page_1'))
                 markup.row(types.InlineKeyboardButton('⁞ إنستقرام 🎥', callback_data=f'show_countries_{service}_5_page_1'))
@@ -744,7 +735,7 @@ elif data.startswith('smm_cat_'):
             
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
             
-            server_name = 'سيرفر 1 (SMMKings)' if service == 'smmkings' else ('سيرفر 2 (SmsMan)' if service == 'smsman' else 'سيرفر 3 (TigerSMS)') # 💡 تعديل الاسم
+            server_name = 'سيرفر 1 (SMMKings)' if service == 'smmkings' else ('سيرفر 2 (SmsMan)' if service == 'smsman' else 'سيرفر 3 (TigerSMS)') 
             
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
 
@@ -756,13 +747,10 @@ elif data.startswith('smm_cat_'):
             # 💡 محاولة جلب الدول من API SMMKings إذا كان السيرفر هو SMMKings
             if service == 'smmkings':
                 try:
-                    # نفترض أن SMMKings API تجلب قائمة الدول لتطبيق معين
+                    # نفترض أن SMMKings API لديها دالة لجلب قائمة الدول لتطبيق معين
                     countries_response = smm_kings_api.get_countries_by_service(app_id)
                     # يجب أن تكون countries_response قاموساً: {country_code: {'name': '..', 'price': '..', 'flag': '..'}, ...}
                     local_countries = countries_response
-                    
-                    # 💡 تحديث بيانات البوت محلياً بالدول الجديدة لـ SMMKings
-                    # يجب أن يتم هذا التحديث في دالة منفصلة في Admin أو عند بدء التشغيل
                     
                 except Exception as e:
                     logging.error(f"Error fetching SMMKings Countries for App {app_id}: {e}")
@@ -810,7 +798,8 @@ elif data.startswith('smm_cat_'):
             if service == 'smmkings':
                 # نفترض أن smm_kings_api لديها دالة لجلب معلومات الرقم لتطبيق/دولة
                 try:
-                    country_info = smm_kings_api.get_country_info(app_id, country_code)
+                    # 💡 يجب التأكد من أن country_info هنا يعيد اسم التطبيق والسعر
+                    country_info = smm_kings_api.get_country_info(app_id, country_code) 
                 except:
                     country_info = {}
             else:
@@ -824,15 +813,13 @@ elif data.startswith('smm_cat_'):
 
             # *** 1. الاتصال بالـ API وجلب الرقم ***
             result = None
-            if service == 'smmkings': # 💡 تم استبدال viotp بـ smmkings
+            if service == 'smmkings':
                 try:
                     # 💡 يجب التأكد من أن هذه الدالة ترجع قاموساً يحتوي على 'success', 'id', و 'number'
                     result = smm_kings_api.buy_number(app_id, country_code) 
                     
                 except Exception as e:
                     logging.error(f"SMMKings buy_number failed: {e}")
-                    # 🛑 هذا يحل مشكلة TypeError: 'SMMKingsAPI' object is not subscriptable إذا كان يتم استخدام الكائن مباشرة
-                    # أو مشكلة AttributeError: 'dict' object has no attribute 'get_number' إذا كان الرد خاطئاً
                     result = None 
                     
             elif service == 'smsman':
@@ -841,10 +828,9 @@ elif data.startswith('smm_cat_'):
                 if result and 'request_id' in result:
                     result['success'] = True
                     result['id'] = str(result['request_id'])
-                    result['number'] = result.get('Phone', result.get('number')) # 💡 إضافة مرونة
+                    result['number'] = result.get('Phone', result.get('number'))
             elif service == 'tigersms':
                 result = tiger_sms_client.get_number(app_id, country_code)
-                # 💡 يجب أن يتأكد المستخدم من أن tiger_sms_client.get_number يرجع 'success', 'id', 'number'
 
             logging.info(f"Response from {service}: {result}")
 
@@ -876,7 +862,7 @@ elif data.startswith('smm_cat_'):
                     f"**💸 - السعر:** `₽{price}`\n"
                     f"**🤖 - الرصيد المتبقي:** `{remaining_balance}`\n" 
                     f"**🔄 - معرف المشتري:** `@{user_doc.get('username', 'غير متوفر')}`\n"
-                    f"**🎦 - الموقع:** `{service}.com`\n\n" # 💡 تعديل اسم الموقع
+                    f"**🎦 - الموقع:** `{service}.com`\n\n" 
                     f"**🌀 - الحالة:** *••• Pending*\n"
                     f"**⏰ - وقت الطلب:** {current_time}\n\n"
                     f"⚠️ *ملاحظة هامة:* أدخل الرقم في التطبيق ثم اضغط على زر *تحديث* لجلب الكود."
@@ -951,7 +937,7 @@ elif data.startswith('smm_cat_'):
 
             # 2. استدعاء API لمرة واحدة
             result = None
-            if service_name == 'smmkings': # 💡 تم استبدال viotp بـ smmkings
+            if service_name == 'smmkings': 
                 result = smm_kings_api.get_otp(request_id)
             elif service_name == 'smsman':
                 # يتم استخدام دالة get_smsman_code المعدلة (المفترض تعديلها في smsman_api.py)
@@ -959,7 +945,7 @@ elif data.startswith('smm_cat_'):
             elif service_name == 'tigersms':
                 result = tiger_sms_client.get_code(request_id)
 
-            otp_code = result.get('code') if result and result.get('status') in ['success', 'COMPLETED'] and result.get('code') else None # 💡 إضافة مرونة لحالة النجاح
+            otp_code = result.get('code') if result and result.get('status') in ['success', 'COMPLETED'] and result.get('code') else None 
             
             # 3. معالجة النتيجة
             if otp_code:
@@ -977,8 +963,8 @@ elif data.startswith('smm_cat_'):
                 try:
                     if service_name == 'smsman':
                         smsman_api['set_smsman_status'](request_id, 6) 
-                    elif service_name == 'smmkings': # 💡 تم استبدال viotp بـ smmkings
-                        smm_kings_api.set_status(request_id, 'STATUS_ACTIVATION_SUCCESS') # افتراض دالة مناسبة
+                    elif service_name == 'smmkings':
+                        smm_kings_api.set_status(request_id, 'STATUS_ACTIVATION_SUCCESS') 
                     elif service_name == 'tigersms':
                         tiger_sms_client.set_status(request_id, 'STATUS_SUCCESS') 
                         
@@ -1032,7 +1018,7 @@ elif data.startswith('smm_cat_'):
             else:
                 # [فشل - الكود لم يصل بعد أو حالة خطأ]
                 
-                if result and result.get('status') == 'error': # 💡 إذا كان هناك خطأ في الرد نفسه
+                if result and result.get('status') == 'error': 
                     error_message = result.get('message', 'خطأ غير معروف')
                     
                     if error_message == 'STATUS_CANCELLED':
@@ -1041,8 +1027,8 @@ elif data.startswith('smm_cat_'):
 
                 # الإضافة الرئيسية لحل مشكلة التحديث اليدوي: إخبار API بالاستمرار في الانتظار
                 try:
-                    if service_name == 'smmkings': # 💡 تم استبدال viotp بـ smmkings
-                        smm_kings_api.set_status(request_id, 'STATUS_WAIT_CODE') # افتراض دالة مناسبة
+                    if service_name == 'smmkings':
+                        smm_kings_api.set_status(request_id, 'STATUS_WAIT_CODE') 
                     elif service_name == 'smsman':
                         smsman_api['set_smsman_status'](request_id, 3) 
                     elif service_name == 'tigersms':
@@ -1085,7 +1071,7 @@ elif data.startswith('smm_cat_'):
             success_api_call = False 
             
             # 1. محاولة الإلغاء في API الموقع
-            if service == 'smmkings': # 💡 تم استبدال viotp بـ smmkings
+            if service == 'smmkings': 
                 result = smm_kings_api.cancel_request(request_id_raw)
                 if result and result.get('success'):
                     success_api_call = True
@@ -1163,8 +1149,8 @@ elif data.startswith('smm_cat_'):
             # (باقي كود تغيير الرقم)
             bot.send_message(chat_id, "🔄 *سيتم إضافة وظيفة تغيير الرقم قريباً.*")
             return
-    
-    # 💡 [إضافة دالة معالج الرسائل لخطوات طلب SMMKings]
+
+    # 💡 [معالج رسائل: إدخال الرابط لطلب SMM]
     @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(message.from_user.id, {}).get('state') == 'awaiting_smm_link')
     def handle_smm_link_input(message):
         user_id = message.from_user.id
@@ -1189,7 +1175,8 @@ elif data.startswith('smm_cat_'):
             f"🔢 **الخطوة 2:** يرجى إرسال **الكمية المطلوبة** (أقل كمية هي {user_state.get('min', '1')}، والحد الأقصى {user_state.get('max', 'غير محدود')})."
         )
         bot.send_message(user_id, message_text, parse_mode='Markdown')
-        
+    
+    # 💡 [معالج رسائل: إدخال الكمية لطلب SMM]
     @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(message.from_user.id, {}).get('state') == 'awaiting_smm_quantity')
     def handle_smm_quantity_input(message):
         user_id = message.from_user.id
@@ -1286,5 +1273,3 @@ elif data.startswith('smm_cat_'):
         # 5. حذف حالة المستخدم سواء نجح أو فشل
         del bot_data['user_states'][user_id]
         save_bot_data(bot_data)
-        
-    # 💡 يجب إضافة دالة معالج الرسائل لخطوات طلب SMMKings في ملف users.py الرئيسي
