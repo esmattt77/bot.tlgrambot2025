@@ -322,25 +322,16 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot_data = get_bot_data()
             all_smm_services = bot_data.get('smmkings_services', {}) 
             
-            if not all_smm_services:
-                bot.answer_callback_query(call.id, "❌ لا توجد فئات لخدمات الرشق متاحة حاليًا.")
-                markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
-                try:
-                    bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
-                except:
-                    bot.send_message(chat_id, "🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
-                return
-                
             # 2. استخراج الفئات الفريدة (مع حساب عدد الخدمات داخل كل فئة)
             categories_with_count = {}
             for service_id, info in all_smm_services.items():
                 category_name = info.get('category_name', 'فئة عامة')
-                # التأكد من أن الخدمة تحتوي على اسم وسعر قبل إضافتها للفئة
-                if info.get('name') and info.get('rate'):
+                # 💡 التصحيح: التأكد من أن الخدمة تحتوي على اسم وسعر قبل إضافتها للفئة
+                if info.get('name') and info.get('rate') is not None:
                     categories_with_count[category_name] = categories_with_count.get(category_name, 0) + 1
             
             if not categories_with_count:
-                bot.answer_callback_query(call.id, "❌ لم يتم العثور على أي خدمات نشطة في أي فئة.")
+                bot.answer_callback_query(call.id, "❌ لا توجد فئات لخدمات الرشق متاحة حاليًا.")
                 markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
                 try:
                     bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
@@ -391,12 +382,14 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 
                 if stored_clean_name == clean_category_name_raw:
                     # التأكد من أن الخدمة تحتوي على جميع الحقول المطلوبة قبل إضافتها
-                    if s_info.get('name') and s_info.get('rate'):
+                    if s_info.get('name') and s_info.get('rate') is not None:
                         services_in_category[s_id] = s_info
                 
             if not services_in_category:
                 bot.answer_callback_query(call.id, "❌ لا توجد خدمات متاحة في هذه الفئة حاليًا.")
-                return
+                # 💡 تصحيح: الرجوع لقائمة الفئات بدلاً من رسالة خطأ صماء
+                return handle_user_callbacks(call) # إعادة استدعاء للرجوع لقائمة الفئات
+
                 
             # 2. بناء الأزرار للخدمات
             for service_id, service_info in services_in_category.items():
@@ -652,9 +645,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
 
         elif data == 'Buynum':
             markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton('سيرفر 1 (SMMKings)', callback_data='service_smmkings')) 
-            markup.row(types.InlineKeyboardButton('سيرفر 2 (SmsMan)', callback_data='service_smsman'))
-            markup.row(types.InlineKeyboardButton('سيرفر 3 (TigerSMS)', callback_data='service_tigersms'))
+            # 🛑 التعديل المطلوب: حذف SMMKings وإعادة تسمية المتبقيين
+            markup.row(types.InlineKeyboardButton('سيرفر 1', callback_data='service_smsman')) # كان سابقا SmsMan
+            markup.row(types.InlineKeyboardButton('سيرفر 2', callback_data='service_tigersms')) # كان سابقا TigerSMS
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="📞 *اختر الخدمة التي تريد الشراء منها:*", parse_mode='Markdown', reply_markup=markup)
         
@@ -689,7 +682,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             service = parts[1]
             markup = types.InlineKeyboardMarkup()
             
+            # 🛑 التعديل المطلوب: تم تغيير اسم السيرفر المعروض للمستخدم
+            server_name = 'سيرفر 1' if service == 'smsman' else ('سيرفر 2' if service == 'tigersms' else 'غير معروف') 
+
             if service == 'smmkings':
+                # تم حذف هذا الجزء من قائمة Buynum، ولكنه قد يُستخدم في مكان آخر (تم الإبقاء عليه كما هو في الكود الداخلي)
                 markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2_page_1')) 
                 markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3_page_1'))
                 markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_4_page_1'))
@@ -735,8 +732,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
             
-            server_name = 'سيرفر 1 (SMMKings)' if service == 'smmkings' else ('سيرفر 2 (SmsMan)' if service == 'smsman' else 'سيرفر 3 (TigerSMS)') 
-            
+            # تم استخدام server_name الجديد هنا
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
 
         elif data.startswith('show_countries_'):
