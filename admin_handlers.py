@@ -1,4 +1,4 @@
-From telebot import types
+from telebot import types
 import telebot.apihelper
 import json
 import time
