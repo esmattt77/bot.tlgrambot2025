@@ -1,4 +1,4 @@
-from telebot import types
+From telebot import types
 import telebot.apihelper
 import json
 import time
@@ -82,24 +82,18 @@ SERVICE_TRANSLATIONS = {
 def translate_service_name(name):
     """دالة لترجمة الكلمات الرئيسية في اسم الخدمة إلى العربية."""
     # يتم استبدال الكلمات الرئيسية في الاسم بترتيب تنازلي للطول لضمان دقة الترجمة
-    # (مثل ترجمة "Non Drop" قبل "Drop")
-    
-    # قائمة الكلمات الإنجليزية المراد ترجمتها، مرتبة حسب الطول (تنازلي) لضمان الأولوية للأطول
     sorted_keys = sorted(SERVICE_TRANSLATIONS.keys(), key=len, reverse=True)
     
-    # تحويل الاسم إلى Title Case للمساعدة في مطابقة الكلمات بغض النظر عن حالة الأحرف
     name_title = name 
     
     for en in sorted_keys:
         ar = SERVICE_TRANSLATIONS[en]
         
         # استخدام التعبير العادي للبحث عن الكلمة الإنجليزية ككلمة كاملة
-        # (لحل مشكلة تطابق الأحرف الجزئي)
-        # 💡 تم استيراد re في البداية
         pattern = re.compile(r'\b' + re.escape(en) + r'\b', re.IGNORECASE) 
         name_title = pattern.sub(ar, name_title)
         
-    return name_title.replace("[]", "") # إزالة الأقواس الفارغة إذا لم يتم ترجمة الفئة
+    return name_title.replace("[]", "") 
 
 
 # 💡 --- MongoDB IMPORTS ---
@@ -138,6 +132,8 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
         elif delete_key:
             stock.pop(delete_key, None)
             
+        # يتم حفظ البيانات الجديدة ضمن المفتاح فقط
+        # يجب تمرير القاموس بالكامل إلى save_bot_data
         save_bot_data({'ready_numbers_stock': stock})
         
         # 🚨 سطر إضافي لضمان تحديث الكاش بعد الحفظ 
@@ -609,7 +605,6 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 count = 0
                 
                 # 💡 يجب إعادة جلب بيانات البوت هنا لضمان الحصول على أحدث نسخة 
-                # خاصة إذا كان هناك تحديث لأسماء الحقول
                 data_file = get_bot_data() 
 
                 for service_id, service in services_dict.items():
@@ -626,6 +621,8 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                         'api_rate': float(service['rate']),
                         'min': int(service['min']),
                         'max': int(service['max']),
+                        # 💥 التعديل الحاسم: إضافة category_name لحل مشكلة العرض في user_handlers.py
+                        'category_name': translated_category, 
                         # الحفاظ على السعر الحالي إذا كان موجودًا، وإلا تعيين سعر افتراضي
                         'user_price': data_file.get('smmkings_services', {}).get(service_id, {}).get('user_price', round(float(service['rate']) * 1.5)), 
                     }
@@ -663,7 +660,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             
             # التأكد من أن رقم الصفحة صالح
             if page < 1: page = 1
-            if page > total_pages: page = total_pages # قد يحدث هذا إذا تم حذف خدمات
+            if page > total_pages: page = total_pages 
 
             start_index = (page - 1) * items_per_page
             end_index = start_index + items_per_page
