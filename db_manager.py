@@ -1,3 +1,5 @@
+# db_manager.py
+
 from pymongo import MongoClient
 import time
 import logging
@@ -9,7 +11,6 @@ logging.basicConfig(
 )
 
 # *** مهم: استبدل YOUR_MONGO_CONNECTION_STRING برابط الاتصال الفعلي الخاص بك ***
-# استخدم رابط الاتصال الذي أرسلته لي مسبقاً
 MONGO_URI = "mongodb+srv://Esmat:_.SASet#aKcU6Zu@bottlegrmbot2025.gccpnku.mongodb.net/?retryWrites=true&w=majority&appName=bottlegrmbot2025" 
 
 try:
@@ -44,15 +45,18 @@ def update_user_balance(user_id, amount, is_increment=True):
     """تحديث (إضافة/خصم) رصيد المستخدم"""
     user_id_str = str(user_id)
     
+    update_op = {}
     if is_increment:
-        update_op = {"$inc": {"balance": amount}}
+        # 💡 نستخدم $inc للإضافة أو الخصم (إذا كانت الكمية سالبة)
+        update_op["$inc"] = {"balance": amount}
     else:
-        update_op = {"$set": {"balance": amount}} # لضبط قيمة محددة
+        # ⚠️ نستخدم $set لتعيين قيمة محددة فقط في حالات خاصة جداً
+        update_op["$set"] = {"balance": amount} 
         
+    # دائماً نضمن وجود حقل الـ id (إذا لم يكن موجوداً، $setOnInsert سيتكفل به)
     users_collection.update_one(
         {"_id": user_id_str},
-        # 💡 ندمج العمليات ونستخدم $set لتحديث حقل 'id' للتأكد من وجوده
-        {**update_op, "$set": {"id": user_id_str}},
+        {**update_op, "$setOnInsert": {"id": user_id_str}}, # 💡 نستخدم $setOnInsert لتعيين ID عند الإنشاء فقط
         upsert=True
     )
 
@@ -139,7 +143,7 @@ def get_bot_data():
         'countries': {}, 
         'states': {}, 
         'active_requests': {}, 
-        'smmkings_services': {},   # ⬅️ المفتاح الصحيح الذي يجب أن يستخدمه الجميع
+        'smmkings_services': {},   # ⬅️ المفتاح الصحيح
         'user_states': {},       
         'ready_numbers_stock': {} 
     }
@@ -153,7 +157,6 @@ def get_bot_data():
         # 📌 هام: هنا نقوم بتحويل المفتاح القديم (إن وجد) إلى المفتاح الجديد
         if 'sh_services' in data_doc and not data_doc.get('smmkings_services'):
             data_doc['smmkings_services'] = data_doc['sh_services']
-            # لا نحذف المفتاح القديم مباشرة هنا لمنع الكتابة غير الضرورية على DB
             
         return data_doc
     else:
@@ -166,8 +169,17 @@ def save_bot_data(data_dict):
     if not data_dict:
         return
         
+    # 💥 الإصلاح الحاسم: إنشاء نسخة من القاموس وحذف المفتاح _id قبل تمريره إلى $set
+    data_to_save = data_dict.copy()
+    if '_id' in data_to_save:
+        del data_to_save['_id'] 
+        
+    # إذا لم يتبق شيء بعد إزالة _id، نتوقف
+    if not data_to_save:
+        return
+
     data_collection.update_one(
         {"_id": "bot_settings"},
-        {"$set": data_dict}, 
+        {"$set": data_to_save}, # 👈 نستخدم القاموس النظيف الآن
         upsert=True
     )
