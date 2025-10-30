@@ -1139,7 +1139,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         )
         bot.send_message(user_id, message_text, parse_mode='Markdown')
     
-    # 💡 [معالج رسائل: إدخال الكمية لطلب SMM]
+    # 💡 [معالج رسائل: إدخال الكمية لطلب SMM] (مُعدَّل)
     @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(message.from_user.id, {}).get('state') == 'awaiting_smm_quantity')
     def handle_smm_quantity_input(message):
         user_id = message.from_user.id
@@ -1157,6 +1157,10 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot.send_message(user_id, "❌ *الكمية غير صحيحة. يرجى إرسال رقم صحيح.*", parse_mode='Markdown')
             return
             
+        # 🆕 التعديل: التأكد أن الكمية موجبة
+        if quantity <= 0:
+            bot.send_message(user_id, "❌ *الكمية يجب أن تكون رقماً موجباً.*", parse_mode='Markdown')
+            return
         
         service_id = user_state.get('service_id')
         link = user_state.get('link')
