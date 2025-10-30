@@ -1,4 +1,4 @@
-from telebot import types
+From telebot import types
 import json
 import time
 import logging
@@ -541,7 +541,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 'min': min_order,
                 'max': max_order
             }
-            save_bot_data(bot_data)
+            # 📌 حفظ حالة المستخدم فقط
+            save_bot_data({'user_states': bot_data['user_states']})
             
             message_text = (
                 f"✅ **أنت على وشك طلب خدمة:** `{name}`\n"
@@ -659,8 +660,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 
                 data_file = get_bot_data()
                 if number_key in data_file.get('ready_numbers_stock', {}):
+                    # 📌 يتم تحديث 'ready_numbers_stock' فقط هنا
                     del data_file['ready_numbers_stock'][number_key] 
-                    save_bot_data(data_file) 
+                    save_bot_data({'ready_numbers_stock': data_file['ready_numbers_stock']}) # تعديل مُقترح لتحسين الأداء
                 
                 register_user(
                     user_id,
@@ -917,8 +919,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     'country_flag': country_flag,
                     'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
                 }
-                data_file['active_requests'] = active_requests
-                save_bot_data(data_file)
+                # 📌 حفظ 'active_requests' فقط
+                save_bot_data({'active_requests': active_requests})
                 
             else:
                 bot.send_message(chat_id, "❌ فشل طلب الرقم. قد يكون غير متوفر أو أن رصيدك في الخدمة غير كافٍ.")
@@ -986,8 +988,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 register_user(user_id, user_doc.get('first_name'), user_doc.get('username'), update_purchase_status={'request_id': request_id, 'status': 'completed'})
                 
                 if request_id in active_requests:
+                    # 📌 يتم تحديث 'active_requests' فقط هنا
                     del active_requests[request_id]
-                    save_bot_data(data_file)
+                    save_bot_data({'active_requests': active_requests})
                 
                 try:
                     country_name = active_request_info.get('country_name', 'غير معروف')
@@ -1097,8 +1100,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                         active_requests = data_file.get('active_requests', {})
                         if str(request_id_in_db) in active_requests:
                             del active_requests[str(request_id_in_db)]
-                            data_file['active_requests'] = active_requests
-                            save_bot_data(data_file)
+                            # 📌 حفظ 'active_requests' فقط
+                            save_bot_data({'active_requests': active_requests})
                         
                         bot.send_message(chat_id, f"✅ **تم إلغاء الطلب بنجاح!** تم استرجاع مبلغ *{price_to_restore}* روبل إلى رصيدك.", parse_mode='Markdown')
                         
@@ -1137,14 +1140,20 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot.send_message(user_id, "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
             return
         
+        # 📌 التعديل الحاسم: حفظ حقل 'user_states' فقط
         user_state['link'] = link
         user_state['state'] = 'awaiting_smm_quantity'
         bot_data['user_states'][user_id] = user_state
-        save_bot_data(bot_data)
+        
+        # حفظ المفتاح الذي تم تحديثه فقط
+        save_bot_data({'user_states': bot_data['user_states']})
+        
+        min_qty = user_state.get('min', '1')
+        max_qty = user_state.get('max', 'غير محدود')
         
         message_text = (
             f"🔗 **تم حفظ الرابط:** `{link}`\n"
-            f"🔢 **الخطوة 2:** يرجى إرسال **الكمية المطلوبة** (أقل كمية هي {user_state.get('min', '1')}، والحد الأقصى {user_state.get('max', 'غير محدود')})."
+            f"🔢 **الخطوة 2:** يرجى إرسال **الكمية المطلوبة** (أقل كمية هي {min_qty}، والحد الأقصى {max_qty})."
         )
         bot.send_message(user_id, message_text, parse_mode='Markdown')
     
@@ -1193,7 +1202,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         if user_balance < price:
             bot.send_message(user_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية. الرصيد المطلوب: {price:.2f} روبل.*", parse_mode='Markdown')
             del bot_data['user_states'][user_id]
-            save_bot_data(bot_data)
+            # حفظ حقل 'user_states' فقط
+            save_bot_data({'user_states': bot_data['user_states']})
             return
 
         try:
@@ -1239,5 +1249,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             logging.error(f"SMMKings add_order exception: {e}")
             bot.send_message(user_id, "❌ **فشل حرج:** حدث خطأ غير متوقع أثناء محاولة تقديم الطلب. لم يتم خصم رصيدك. يرجى التواصل مع الدعم.", parse_mode='Markdown')
 
+        # 📌 مسح حالة المستخدم بعد إكمال/فشل الطلب
         del bot_data['user_states'][user_id]
-        save_bot_data(bot_data)
+        # حفظ حقل 'user_states' فقط
+        save_bot_data({'user_states': bot_data['user_states']})
