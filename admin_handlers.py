@@ -608,11 +608,21 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 data_file = get_bot_data() 
 
                 for service_id, service in services_dict.items():
-                    # 💡 التعديل المطلوب يبدأ هنا:
-                    # 💡 استخدم الاسم الإنجليزي الأصلي للفئة كـ ID (هو الأقصر والأكثر ثباتاً)
-                    category_id_short = service['category'] 
-                    translated_category = translate_service_name(service['category'])
-                    # *** تطبيق الترجمة المُحسّنة هنا ***
+                    
+                    # 1. الآيدي الأصلي
+                    original_category = service['category']
+                    
+                    # 2. تنظيف الآيدي الأصلي وتقصيره (مهم جداً!)
+                    # * يتم إزالة المسافات والرموز وجعله قصيراً قدر الإمكان
+                    category_id_short = original_category.replace(" ", "_").replace("/", "-").replace("[", "").replace("]", "").replace("(", "").replace(")", "").replace(".", "").replace(",", "").lower()
+                    
+                    # 3. قص الآيدي إذا تجاوز طول معين
+                    # 📌 ضمان ألا يتجاوز طول الآيدي القصير 25 حرفاً لترك مساحة كافية للبادئة 'smmc_' وللأرقام
+                    if len(category_id_short) > 25:
+                        category_id_short = category_id_short[:25] # قص الآيدي
+                    
+                    # 4. الترجمة
+                    translated_category = translate_service_name(original_category)
                     translated_name = translate_service_name(service['name'])
                     
                     # دمج الفئة والاسم المترجمين
@@ -624,10 +634,10 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                         'api_rate': float(service['rate']),
                         'min': int(service['min']),
                         'max': int(service['max']),
-                        # 💥 التعديل الحاسم: إضافة category_name لحل مشكلة العرض في user_handlers.py
+                        # الاسم المترجم للعرض
                         'category_name': translated_category, 
-                        # 💥 الإضافة الجديدة المطلوبة:
-                        'category_id_short': category_id_short, # الآيدي القصير للـ Callback
+                        # الآيدي القصير جداً والآمن لاستخدامه في الـ Callback
+                        'category_id_short': category_id_short, 
                         # الحفاظ على السعر الحالي إذا كان موجودًا، وإلا تعيين سعر افتراضي
                         'user_price': data_file.get('smmkings_services', {}).get(service_id, {}).get('user_price', round(float(service['rate']) * 1.5)), 
                     }
@@ -638,7 +648,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 # 💡 إعادة جلب البيانات لضمان تحديث ملف SMM Services في الذاكرة
                 data_file = get_bot_data() 
 
-                message = f"✅ تم جلب وتخزين {count} خدمة من SMMKings بنجاح.\n\n⚠️ تذكر أن ترجمة الأسماء تعتمد على قاموس البوت. إذا وجدت كلمات لم تُترجم، يمكنك إضافتها لقاموس `SERVICE_TRANSLATIONS` ثم إعادة الجلب."
+                message = f"✅ تم جلب وتخزين {count} خدمة من SMMKings بنجاح.\n\n⚠️ تذكر أن ترجمة الأسماء تعتمد على قاموس البوت. يجب **إعادة جلب الخدمات** بعد أي تعديل في قاموس الترجمة."
             else:
                 error_msg = services_data.get('error', 'خطأ غير معروف') if services_data else 'فشل في الاتصال أو لم يتم إرجاع بيانات.'
                 message = f"❌ فشل جلب خدمات SMMKings: {error_msg}"
