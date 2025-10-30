@@ -7,7 +7,7 @@ import random
 from datetime import datetime 
 import re 
 import pytz 
-from collections import defaultdict # 💡 تم إضافة استيراد defaultdict هنا
+from collections import defaultdict 
 
 # تهيئة نظام التسجيل
 logging.basicConfig(
@@ -161,42 +161,39 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot.send_message(chat_id, text, parse_mode='Markdown', reply_markup=markup)
             
     # =========================================================================
-    # 🚀 [الدالة المصححة: عرض فئات SMM] (الإصلاح رقم 1)
+    # 🚀 [الدالة المصححة: عرض فئات SMM مع ترقيم وفلترة]
     # =========================================================================
-    def show_smm_categories(chat_id, message_id):
+    def show_smm_categories(chat_id, message_id, page=1):
         """
-        تجلب خدمات الرشق المخزنة محلياً، وتجمعها حسب 'category_name' مع التحقق من السعر.
+        تجلب خدمات الرشق المخزنة محلياً، وتجمعها حسب 'category_name' مع ترقيم الصفحات، 
+        وفلترة الخدمات التي لم يقم المشرف بتسعيرها (user_price > 0).
         """
         
-        # 1. جلب البيانات
+        # 1. جلب البيانات والتجميع
         bot_data = get_bot_data()
         services = bot_data.get('smmkings_services', {})
         
-        # 2. تجميع الخدمات حسب الفئة (الجزء الحاسم)
-        categories = defaultdict(list)
+        categories_dict = defaultdict(list)
         for service_id, info in services.items():
             category_name = info.get('category_name') 
-            
-            # 💥 الإصلاح رقم 1: نقرأ السعر الذي قام المشرف بتحديده مباشرة
             user_price = info.get('user_price', 0) 
             min_qty = info.get('min', 0)
             
-            # تحويل السعر للتأكد من أنه رقم
             try:
                 user_price = float(user_price)
             except (ValueError, TypeError):
                 user_price = 0
             
-            # 📌 نقطة تحقق إضافية: يجب أن يكون السعر للمستخدم أكبر من صفر والحد الأدنى للكمية أكبر من صفر
+            # 📌 شرط العرض: يجب أن يكون السعر للمستخدم أكبر من صفر والحد الأدنى للكمية أكبر من صفر
+            # **هذا يضمن عرض الخدمات المسعرة فقط كما طلبت**
             if category_name and user_price > 0 and min_qty > 0:
-                categories[category_name].append(service_id)
+                categories_dict[category_name].append(service_id)
                 
-        # 3. التحقق من وجود فئات
-        if not categories:
+        # 2. التحقق من وجود فئات
+        if not categories_dict:
             message = "❌ لا توجد فئات الخدمات الرشق متاحة حالياً. يرجى من المشرف جلب وتحديث الخدمات وتحديد أسعارها."
             markup = types.InlineKeyboardMarkup()
             markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
-            
             try:
                 if message_id:
                     bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
@@ -209,23 +206,45 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                  bot.send_message(chat_id, message, parse_mode='Markdown', reply_markup=markup)
             return
 
-        # 4. إنشاء أزرار الفئات
+        # 3. تطبيق الترقيم (Pagination)
+        items_per_page = 10
+        # فرز الفئات أبجدياً لتنظيم العرض
+        sorted_category_names = sorted(categories_dict.keys()) 
+        total_categories = len(sorted_category_names)
+        total_pages = (total_categories + items_per_page - 1) // items_per_page
+        
+        start_index = (page - 1) * items_per_page
+        end_index = start_index + items_per_page
+        current_page_categories = sorted_category_names[start_index:end_index]
+
+        # 4. إنشاء أزرار الفئات للصفحة الحالية
         markup = types.InlineKeyboardMarkup(row_width=1)
         
-        # فرز الفئات أبجدياً لتنظيم العرض
-        for category_name in sorted(categories.keys()):
-            # ترميز اسم الفئة لضمان سلامة الكولباك داتا (شكل أنظف)
+        for category_name in current_page_categories:
+            # الترميز المختصر لتقليل حجم callback_data (لمنع خطأ BUTTON_DATA_INVALID)
             safe_category_name = category_name.replace(" ", "_").replace("[", "").replace("]", "").replace("/", "-").replace("(", "").replace(")", "").replace(".", "").replace(",", "")
             
+            # 💡 استخدام callback_data أقصر: smmc_ 
+            callback_data = f'smmc_{safe_category_name}'
+            
             markup.add(types.InlineKeyboardButton(
-                f"🚀 {category_name} ({len(categories[category_name])})",
-                # 💡 تم استخدام prefix 'smm_category_' كما طلبت
-                callback_data=f'smm_category_{safe_category_name}' 
+                f"🚀 {category_name} ({len(categories_dict[category_name])})",
+                callback_data=callback_data
             ))
+            
+        # 5. أزرار التنقل بين الصفحات
+        nav_buttons = []
+        if page > 1:
+            nav_buttons.append(types.InlineKeyboardButton('◀️ السابق', callback_data=f'smm_page_{page - 1}'))
+        if page < total_pages:
+            nav_buttons.append(types.InlineKeyboardButton('التالي ▶️', callback_data=f'smm_page_{page + 1}'))
+        
+        if nav_buttons:
+            markup.row(*nav_buttons)
 
         markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
 
-        message_text = "🚀 *اختر فئة الخدمة التي ترغب بطلبها:*"
+        message_text = f"🚀 *اختر فئة الخدمة التي ترغب بطلبها:* (صفحة {page} من {total_pages})"
         
         try:
             if message_id:
@@ -392,18 +411,27 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smm_services' - استدعاء الدالة المنفصلة]
+        # 🚀 [معالج 'smm_services' - استدعاء الدالة المنفصلة بالصفحة الأولى]
         # =========================================================================
         elif data == 'smm_services': 
-            show_smm_categories(chat_id, message_id)
+            show_smm_categories(chat_id, message_id, page=1) 
+            return
+
+        # 🆕 [معالج التنقل بين صفحات الفئات]
+        elif data.startswith('smm_page_'):
+            try:
+                page = int(data.split('_')[-1])
+                show_smm_categories(chat_id, message_id, page=page)
+            except ValueError:
+                bot.answer_callback_query(call.id, "❌ خطأ في رقم الصفحة.")
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smm_category_' - عرض الخدمات داخل الفئة من المخزن] (الإصلاح رقم 2)
+        # 🚀 [معالج 'smmc_' - عرض الخدمات داخل الفئة من المخزن] (المعدَّل)
         # =========================================================================
-        elif data.startswith('smm_category_'):
-            # 💡 تم تغيير prefix إلى 'smm_category_' 
-            clean_category_name_raw = data.replace('smm_category_', '', 1) 
+        elif data.startswith('smmc_'):
+            # 💡 تم تغيير البادئة إلى smmc_ لتقليل حجم الكولباك داتا
+            clean_category_name_raw = data.replace('smmc_', '', 1) 
             # إعادة تحويل الاسم المعرَّم للعرض
             category_name = clean_category_name_raw.replace('_', ' ').replace('-', '/') 
             
@@ -422,7 +450,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 
                 if stored_safe_name == clean_category_name_raw: 
                     
-                    # 💥 الإصلاح رقم 2: قراءة السعر من المفتاح الصحيح 'user_price'
+                    # 💥 الفلترة: قراءة السعر من المفتاح الصحيح 'user_price'
                     user_price = s_info.get('user_price', 0) 
                     min_qty = s_info.get('min', 0)
                     
@@ -431,6 +459,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     except (ValueError, TypeError):
                         user_price = 0
                     
+                    # 📌 عرض الخدمة فقط إذا كانت مسعرة ولها حد أدنى
                     if s_info.get('name') and user_price > 0 and min_qty > 0:
                         services_in_category[s_id] = s_info
                 
@@ -467,7 +496,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smm_order_' - جلب التفاصيل من المخزن وبدء الطلب] (الإصلاح رقم 3)
+        # 🚀 [معالج 'smm_order_' - جلب التفاصيل من المخزن وبدء الطلب] (مصحح)
         # =========================================================================
         elif data.startswith('smm_order_'):
             service_id = data.split('_')[-1]
@@ -485,7 +514,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             min_order = str(service_details.get('min', '1'))
             max_order = str(service_details.get('max', 'غير محدود'))
             
-            # 💥 الإصلاح رقم 3: قراءة السعر من المفتاح الصحيح 'user_price'
+            # 💥 الإصلاح: قراءة السعر من المفتاح الصحيح 'user_price'
             user_price = service_details.get('user_price', 0)
             try:
                 user_price = float(user_price)
