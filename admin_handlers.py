@@ -608,8 +608,11 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                 data_file = get_bot_data() 
 
                 for service_id, service in services_dict.items():
-                    # *** تطبيق الترجمة المُحسّنة هنا ***
+                    # 💡 التعديل المطلوب يبدأ هنا:
+                    # 💡 استخدم الاسم الإنجليزي الأصلي للفئة كـ ID (هو الأقصر والأكثر ثباتاً)
+                    category_id_short = service['category'] 
                     translated_category = translate_service_name(service['category'])
+                    # *** تطبيق الترجمة المُحسّنة هنا ***
                     translated_name = translate_service_name(service['name'])
                     
                     # دمج الفئة والاسم المترجمين
@@ -623,6 +626,8 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
                         'max': int(service['max']),
                         # 💥 التعديل الحاسم: إضافة category_name لحل مشكلة العرض في user_handlers.py
                         'category_name': translated_category, 
+                        # 💥 الإضافة الجديدة المطلوبة:
+                        'category_id_short': category_id_short, # الآيدي القصير للـ Callback
                         # الحفاظ على السعر الحالي إذا كان موجودًا، وإلا تعيين سعر افتراضي
                         'user_price': data_file.get('smmkings_services', {}).get(service_id, {}).get('user_price', round(float(service['rate']) * 1.5)), 
                     }
