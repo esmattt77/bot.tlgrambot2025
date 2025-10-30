@@ -1,4 +1,4 @@
-from telebot import types
+From telebot import types
 import json
 import time
 import logging
@@ -81,7 +81,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
     def get_ready_numbers_stock():
         return get_bot_data().get('ready_numbers_stock', {})
 
-    # 💡 [التصحيح النهائي لمرونة المطابقة] دالة مساعدة مرنة للبحث عن الطلب في سجل المشتريات
+    # 💡 [دالة مساعدة مرنة للبحث عن الطلب في سجل المشتريات]
     def get_cancellable_request_info(user_doc, request_id):
         purchases = user_doc.get('purchases', [])
         request_id_str = str(request_id) 
@@ -136,7 +136,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         markup.add(types.InlineKeyboardButton("✅ تم الاشتراك، تحقق الآن", callback_data='check_sub_and_continue'))
         return markup
         
-    # 💡 [تعديل دالة show_main_menu]
+    # 💡 [دالة show_main_menu]
     def show_main_menu(chat_id, message_id=None):
         markup = types.InlineKeyboardMarkup()
         markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
@@ -158,22 +158,76 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     bot.send_message(chat_id, text, parse_mode='Markdown', reply_markup=markup)
         else:
             bot.send_message(chat_id, text, parse_mode='Markdown', reply_markup=markup)
+            
+    # =========================================================================
+    # 🚀 [الدالة الجديدة: عرض فئات SMM]
+    # =========================================================================
+    def show_smm_categories(chat_id, message_id):
+        """
+        تجلب خدمات الرشق المخزنة محلياً، وتجمعها حسب 'category_name'، ثم تعرضها للمستخدم.
+        """
+        markup = types.InlineKeyboardMarkup()
+        
+        # 1. جلب الخدمات المخزنة محلياً
+        bot_data = get_bot_data()
+        all_smm_services = bot_data.get('smmkings_services', {}) 
+        
+        # 2. تجميع الخدمات حسب الفئة وحساب عدد الخدمات
+        categories_with_count = {}
+        for service_id, info in all_smm_services.items():
+            # *** استخدام المفتاح 'category_name' المصحح ***
+            category_name = info.get('category_name', 'فئة عامة') 
+            
+            # 💡 التأكد من أن الخدمة تحتوي على اسم وسعر قبل إضافتها للفئة
+            if info.get('name') and info.get('rate') is not None:
+                categories_with_count[category_name] = categories_with_count.get(category_name, 0) + 1
+        
+        if not categories_with_count:
+            message = "❌ لا توجد فئات لخدمات الرشق متاحة حاليًا."
+            markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
+            try:
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+            except:
+                bot.send_message(chat_id, message, parse_mode='Markdown', reply_markup=markup)
+            return
+        
+        # 3. بناء الأزرار للفئات
+        for category_name in sorted(categories_with_count.keys()):
+            count = categories_with_count[category_name]
+            
+            # إنشاء callback_data نظيف
+            clean_category_name = category_name.replace(' ', '_')
+            
+            markup.add(types.InlineKeyboardButton(f"🔗 {category_name} ({count} خدمات)", callback_data=f'smm_cat_{clean_category_name}'))
+            
+        markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
+        
+        message_text = "🚀 *اختر الفئة التي تريد الرشق لها:*"
+        
+        try:
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown', reply_markup=markup)
+        except telebot.apihelper.ApiTelegramException as e:
+            if "message is not modified" not in str(e):
+                bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
+        
+        return
+    # =========================================================================
+    # 🚀 [نهاية الدالة الجديدة]
+    # =========================================================================
 
-
-    # 💡 [معالج الرسائل: دعم /start مع الإحالة والتحقق الإجباري]
+    # ... (باقي معالجات الرسائل) ...
+    # --------------------------------------------------------------------------
     @bot.message_handler(func=lambda message: message.from_user.id != DEVELOPER_ID)
     def handle_user_messages(message):
+        # ... (نفس محتوى الدالة السابقة) ...
         chat_id = message.chat.id
         user_id = message.from_user.id
         first_name = message.from_user.first_name
         username = message.from_user.username
         
-        # 🛑 إضافة الشرط الحاسم: منع ظهور رسالة الاشتراك الإجباري في الجروبات
         if message.chat.type != "private":
-            return # إيقاف التنفيذ فوراً إذا لم تكن الدردشة خاصة
-        # ----------------------------------------------------
+            return
         
-        # 1. معالجة رابط الإحالة من /start XXX
         referrer_id = None
         if message.text.startswith('/start'):
             try:
@@ -183,10 +237,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             except:
                 pass
         
-        # تسجيل/تحديث المستخدم (سيتم هنا مكافأة المُحيل في db_manager)
         register_user(user_id, first_name, username, referrer_id=referrer_id)
 
-        # 2. التحقق الإجباري من الاشتراك
         is_subscribed = True
         for channel in CHANNELS_LIST:
             if not check_subscription(bot, user_id, channel):
@@ -202,7 +254,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                              reply_markup=markup)
             return
 
-        # 3. معالجة الأوامر الرئيسية بعد النجاح
         if message.text.startswith('/start'):
              show_main_menu(chat_id)
              return
@@ -213,7 +264,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
             return
 
-        # 💡 [معالج أمر /invite]
         elif message.text in ['/invite', 'رابط الإحالة']:
             bot.send_message(chat_id, 
                              f"🔗 *رابط الإحالة الخاص بك:*\n`https://t.me/{bot.get_me().username}?start={user_id}`\n\n"
@@ -221,12 +271,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                              parse_mode='Markdown')
             return
         
-        # 💡 [معالج رسالة عادية غير معرفة]
         else:
-            # يمكن تجاهل الرسائل النصية غير المعرفة هنا
             pass
-        
-    # 💡 [تعديل معالج Callbacks: تطبيق التحقق الإجباري ومعالج زر التحقق والإحالة]
+    # --------------------------------------------------------------------------
+
+    # ... (باقي معالجات Callbacks) ...
     @bot.callback_query_handler(func=lambda call: call.from_user.id != DEVELOPER_ID)
     def handle_user_callbacks(call):
         chat_id = call.message.chat.id
@@ -238,7 +287,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         user_doc = get_user_doc(user_id)
         user_balance = user_doc.get('balance', 0) if user_doc else 0
         
-        # 1. التحقق الإجباري من الاشتراك (هذا الفحص ضروري لإيقاف العمليات في البوت)
+        # 1. التحقق الإجباري من الاشتراك
         is_subscribed = True
         for channel in CHANNELS_LIST:
             if not check_subscription(bot, user_id, channel):
@@ -248,7 +297,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         if not is_subscribed:
             markup = get_subscription_markup(CHANNELS_LIST)
             bot.answer_callback_query(call.id, "🛑 يرجى الاشتراك في القنوات الإجبارية أولاً.", show_alert=True)
-            # محاولة إرسال رسالة الاشتراك مجدداً
             try:
                  bot.edit_message_text(
                     chat_id=chat_id, message_id=message_id, 
@@ -281,7 +329,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             )
             return
             
-        # 💡 [من هنا يبدأ باقي منطق Callbacks الأصلي]
         elif data == 'back':
             show_main_menu(chat_id, message_id)
             return
@@ -319,59 +366,17 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smm_services' - عرض الفئات من المخزن] (مُعدَّل)
+        # 🚀 [معالج 'smm_services' - استدعاء الدالة المنفصلة]
         # =========================================================================
         elif data == 'smm_services': 
-            markup = types.InlineKeyboardMarkup()
-            
-            # 1. جلب الخدمات المخزنة محلياً
-            bot_data = get_bot_data()
-            all_smm_services = bot_data.get('smmkings_services', {}) 
-            
-            # 2. استخراج الفئات الفريدة (مع حساب عدد الخدمات داخل كل فئة)
-            categories_with_count = {}
-            for service_id, info in all_smm_services.items():
-                category_name = info.get('category_name', 'فئة عامة')
-                # 💡 التصحيح: التأكد من أن الخدمة تحتوي على اسم وسعر قبل إضافتها للفئة
-                if info.get('name') and info.get('rate') is not None:
-                    categories_with_count[category_name] = categories_with_count.get(category_name, 0) + 1
-            
-            if not categories_with_count:
-                bot.answer_callback_query(call.id, "❌ لا توجد فئات لخدمات الرشق متاحة حاليًا.")
-                markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
-                try:
-                    bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
-                except:
-                    bot.send_message(chat_id, "🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
-                return
-            
-            # 3. بناء الأزرار للفئات
-            for category_name in sorted(categories_with_count.keys()):
-                count = categories_with_count[category_name]
-                
-                # 💡 التعديل الحاسم: استخدم دالة .replace(' ', '_') فقط لإنشاء callback_data نظيف
-                clean_category_name = category_name.replace(' ', '_')
-                
-                # نرسل اسم الفئة النظيف وعدد الخدمات
-                markup.add(types.InlineKeyboardButton(f"🔗 {category_name} ({count} خدمات)", callback_data=f'smm_cat_{clean_category_name}'))
-                
-            markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
-            
-            try:
-                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
-            except telebot.apihelper.ApiTelegramException as e:
-                if "message is not modified" not in str(e):
-                    bot.send_message(chat_id, "🚀 *اختر الفئة التي تريد الرشق لها:*", parse_mode='Markdown', reply_markup=markup)
+            show_smm_categories(chat_id, message_id)
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smm_cat_' - عرض الخدمات داخل الفئة من المخزن] (مُعدَّل)
+        # 🚀 [معالج 'smm_cat_' - عرض الخدمات داخل الفئة من المخزن] 
         # =========================================================================
         elif data.startswith('smm_cat_'):
-            # 💡 التعديل الحاسم: استعادة اسم الفئة المشفر عبر إزالة المقدمة فقط
             clean_category_name_raw = data.replace('smm_cat_', '', 1) 
-            
-            # 💡 استعادة الاسم الأصلي للفئة (للعرض في الرسالة)
             category_name = clean_category_name_raw.replace('_', ' ') 
             
             markup = types.InlineKeyboardMarkup()
@@ -384,15 +389,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             for s_id, s_info in all_smm_services.items():
                 stored_category_name = s_info.get('category_name', 'فئة عامة')
                 
-                # 💡 المنطق الجديد: قارن بين الاسم النظيف الذي تم تخزينه والاسم النظيف المستعاد من الكولباك
                 if stored_category_name.replace(' ', '_') == clean_category_name_raw: 
-                    # التأكد من أن الخدمة تحتوي على جميع الحقول المطلوبة قبل إضافتها
                     if s_info.get('name') and s_info.get('rate') is not None:
                         services_in_category[s_id] = s_info
                 
             if not services_in_category:
                 bot.answer_callback_query(call.id, "❌ لا توجد خدمات متاحة في هذه الفئة حاليًا.")
-                # 💡 تصحيح: الرجوع لقائمة الفئات بدلاً من رسالة خطأ صماء
                 markup.add(types.InlineKeyboardButton('🔙 - رجوع لقائمة الفئات', callback_data='smm_services'))
                 try:
                     bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name}:*", parse_mode='Markdown', reply_markup=markup)
@@ -406,10 +408,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 min_order = service_info.get('min', 'Min')
                 rate_api = float(service_info.get('rate', '0.00'))
                 
-                # 💡 افتراض سعر بيع للمستخدم (سعر API * 2 مؤقتاً)
                 user_rate_per_k = rate_api * 2 
                 
-                # نستخدم 'smm_order_SERVICE_ID' للانتقال إلى شاشة الطلب
                 markup.add(types.InlineKeyboardButton(f"{name} | Min {min_order} | ₽ {user_rate_per_k:.2f}", callback_data=f'smm_order_{service_id}'))
                 
             markup.add(types.InlineKeyboardButton('🔙 - رجوع لقائمة الفئات', callback_data='smm_services'))
@@ -427,7 +427,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         elif data.startswith('smm_order_'):
             service_id = data.split('_')[-1]
             
-            # جلب تفاصيل الخدمة من المخزن المحلي
             bot_data = get_bot_data()
             all_smm_services = bot_data.get('smmkings_services', {})
             service_details = all_smm_services.get(service_id, {})
@@ -438,25 +437,22 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 return
             
             name = service_details.get('name', 'خدمة رشق')
-            rate_api = float(service_details.get('rate', '0.00')) # سعر API بالدولار/الروبل
+            rate_api = float(service_details.get('rate', '0.00')) 
             min_order = str(service_details.get('min', '1'))
             max_order = str(service_details.get('max', 'غير محدود'))
             
-            # 💡 افتراض سعر بيع للمستخدم (يجب جلب هذا من إعدادات المشرف)
             user_rate_per_k = rate_api * 2 
 
-            # حفظ حالة المستخدم (الخدمة التي يريد طلبها)
             bot_data['user_states'][user_id] = {
                 'state': 'awaiting_smm_link',
                 'service_id': service_id,
                 'service_name': name,
-                'rate': user_rate_per_k, # استخدام سعر البيع للمستخدم
+                'rate': user_rate_per_k, 
                 'min': min_order,
                 'max': max_order
             }
             save_bot_data(bot_data)
             
-            # إرسال الرسالة للمستخدم
             message_text = (
                 f"✅ **أنت على وشك طلب خدمة:** `{name}`\n"
                 f"💰 **السعر:** `{user_rate_per_k:.2f}` روبل لكل 1000\n"
@@ -465,8 +461,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             )
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown', reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('❌ إلغاء الطلب', callback_data='smm_services')))
             return
-
-        # 💡 [نهاية معالجات SMMKings الأساسية]
 
         elif data == 'Wo':
             bot.send_message(chat_id, "🛍 *لا توجد عروض خاصة متاحة حالياً. تابعنا للحصول على التحديثات!*", parse_mode='Markdown')
@@ -490,15 +484,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 return
 
             markup = types.InlineKeyboardMarkup()
-            # 💡 نستخدم رقم الهاتف كـ key في المخزون
             for number, num_data in ready_numbers_stock.items():
                 country = num_data.get('country', 'الدولة')
                 app_state = num_data.get('state', 'تطبيق')
                 price = num_data.get('price', 0)
-                # إخفاء جزء من الرقم للعرض
                 num_hidden = number[:len(number) - 4] + "••••"
                 
-                # استخدام رقم الهاتف كاملاً في الكولباك لسهولة التعامل (buy_ready_NUMBER)
                 markup.row(types.InlineKeyboardButton(f"[{country}] {app_state} - {num_hidden} ({price} روبل)", callback_data=f"confirm_buy_ready_{number}"))
             
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
@@ -506,7 +497,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
 
         # 🆕 --- تأكيد الشراء (الصيغة المطلوبة الأولى) ---
         elif data.startswith('confirm_buy_ready_'):
-            # رقم الهاتف بالكامل هو key
             number_key = data.split('_', 3)[-1] 
             ready_numbers_stock = get_ready_numbers_stock()
             number_data = ready_numbers_stock.get(number_key)
@@ -518,17 +508,14 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             name = number_data.get('country', 'رقم جاهز')
             price = number_data.get('price', 0)
 
-            # 🚨 التحقق من الرصيد قبل عرض التأكيد
             if user_balance < price:
                 bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
                 return
                 
             markup = types.InlineKeyboardMarkup()
-            # الكولباك الحقيقي للشراء
             markup.row(types.InlineKeyboardButton(f"✅ تأكيد الشراء {price} روبل", callback_data=f"execute_buy_ready_{number_key}"))
             markup.row(types.InlineKeyboardButton('❌ إلغاء', callback_data='ready'))
 
-            # استخدام الصيغة النصية المطلوبة
             message_text = (
                 f"☑️ أنت الان تقوم بشراء رقم جاهز من البوت.\n"
                 f"⚠️ *ملاحظة* : \n"
@@ -542,7 +529,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
 
         # 🆕 --- تنفيذ الشراء (الصيغة المطلوبة الثانية) ---
         elif data.startswith('execute_buy_ready_'):
-            # رقم الهاتف بالكامل هو key
             number_key = data.split('_', 3)[-1] 
             ready_numbers_stock = get_ready_numbers_stock()
             number_data = ready_numbers_stock.get(number_key)
@@ -553,12 +539,10 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             
             price = number_data.get('price', 0)
             
-            # 🚨 التحقق النهائي من الرصيد والوجود
             if user_balance < price:
                 bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية. رصيدك الحالي: {user_balance}*", parse_mode='Markdown')
                 return
 
-            # 💡 [تصحيح المشكلة الثانية] - 1. بناء الرسالة أولاً
             idnums = random.randint(100000, 999999) 
             number = number_key
             code = number_data.get('code', 'غير متوفر (يرجى التواصل مع الدعم)')
@@ -579,34 +563,29 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             )
             
             try:
-                # 💡 [تصحيح المشكلة الثانية] - 2. محاولة إرسال رسالة الإيصال (إذا نجح الإرسال، ننتقل للخصم)
                 bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown')
                 
-                # 💡 [تصحيح المشكلة الثانية] - 3. تنفيذ الخصم وتحديث قاعدة البيانات
                 update_user_balance(user_id, -price, is_increment=True)
                 
-                # 4. إزالة الرقم من المخزون وحفظ التعديل
                 data_file = get_bot_data()
                 if number_key in data_file.get('ready_numbers_stock', {}):
                     del data_file['ready_numbers_stock'][number_key] 
-                    save_bot_data(data_file) # حفظ كامل البيانات بعد التعديل
+                    save_bot_data(data_file) 
                 
-                # 5. تسجيل عملية الشراء
                 register_user(
                     user_id,
                     user_doc.get('first_name'), 
                     user_doc.get('username'), 
                     new_purchase={
-                        'request_id': str(idnums), # يتم تخزين request_id كسلسلة نصية
+                        'request_id': str(idnums),
                         'phone_number': number_key,
                         'app': number_data.get('state', 'جاهز'),
                         'price': price,
-                        'status': 'ready_number_purchased', # حالة خاصة للطلبات المكتملة
+                        'status': 'ready_number_purchased',
                         'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
                     }
                 )
                 
-                # إشعار للمطور
                 bot.send_message(DEVELOPER_ID, 
                                  f"🔔 *تم بيع رقم جاهز!*\n"
                                  f"*الرقم:* `{number}`\n"
@@ -615,10 +594,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                                  parse_mode='Markdown')
 
             except telebot.apihelper.ApiTelegramException as e:
-                # إذا فشل إرسال الرسالة، لن يتم خصم الرصيد ولن يتم تحديث MongoDB
                 logging.error(f"Failed to send Ready Number message (Req ID: {idnums}). Reverting purchase. Error: {e}")
                 
-                # إشعار للمطور بالخطأ الحرج
                 bot.send_message(DEVELOPER_ID, 
                                  f"🚨 *فشل حرج في بيع رقم جاهز!* لم يتم خصم الرصيد. يجب التحقق.\n"
                                  f"*رقم الهاتف:* `{number_key}`\n"
@@ -626,7 +603,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                                  f"*الخطأ:* {e}", 
                                  parse_mode='Markdown')
                 
-                # إرسال رسالة خطأ للمستخدم
                 bot.send_message(chat_id, "❌ *فشل إتمام عملية الشراء.* لم يتم خصم رصيدك. يرجى المحاولة مجدداً أو التواصل مع الدعم.", parse_mode='Markdown')
             
             return
@@ -651,9 +627,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
 
         elif data == 'Buynum':
             markup = types.InlineKeyboardMarkup()
-            # 🛑 التعديل المطلوب: حذف SMMKings وإعادة تسمية المتبقيين
-            markup.row(types.InlineKeyboardButton('سيرفر 1', callback_data='service_smsman')) # كان سابقا SmsMan
-            markup.row(types.InlineKeyboardButton('سيرفر 2', callback_data='service_tigersms')) # كان سابقا TigerSMS
+            markup.row(types.InlineKeyboardButton('سيرفر 1', callback_data='service_smsman')) 
+            markup.row(types.InlineKeyboardButton('سيرفر 2', callback_data='service_tigersms')) 
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="📞 *اختر الخدمة التي تريد الشراء منها:*", parse_mode='Markdown', reply_markup=markup)
         
@@ -665,9 +640,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             message_text = f"💰 رصيدك الحالي هو: *{balance}* روبل.\n\n"
             if purchases:
                 message_text += "📝 **سجل مشترياتك الأخيرة:**\n"
-                # عرض آخر 5 مشتريات
                 for i, p in enumerate(purchases[-5:]):
-                    # نستخدم phone_number أو app_name أو service_name
                     item_name = p.get('phone_number', p.get('app_name', p.get('service_name', 'غير متوفر'))) 
                     price = p.get('price', 0)
                     timestamp = p.get('timestamp', 'غير متوفر')
@@ -688,10 +661,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             service = parts[1]
             markup = types.InlineKeyboardMarkup()
             
-            # 🛑 التعديل المطلوب: تم تغيير اسم السيرفر المعروض للمستخدم
             server_name = 'سيرفر 1' if service == 'smsman' else ('سيرفر 2' if service == 'tigersms' else 'غير معروف') 
 
-            # 💡 تم حذف المنطق المكرر لـ SMMKings والتركيز على SmsMan و TigerSMS
             if service == 'smsman':
                 markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2_page_1'))
                 markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_3_page_1'))
@@ -724,7 +695,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='Buynum'))
             
-            # تم استخدام server_name الجديد هنا
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"☑️ *اختر التطبيق* الذي تريد *شراء رقم وهمي* له من خدمة **{server_name}**.", parse_mode='Markdown', reply_markup=markup)
 
         elif data.startswith('show_countries_'):
@@ -732,14 +702,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             service, app_id = parts[2], parts[3]
             page = int(parts[5]) if len(parts) > 5 else 1
             
-            # 💡 للمواقع الأخرى (smsman, tigersms)، نعتمد على البيانات المحلية المخزنة
             local_countries = data_file.get('countries', {}).get(service, {}).get(app_id, {})
             
             if not local_countries:
                 bot.send_message(chat_id, '❌ لا توجد دول متاحة لهذا التطبيق حاليًا.')
                 return
 
-            # 🛑 معالجة مشكلة 414: تقسيم القائمة
             items_per_page = 10
             country_items = list(local_countries.items())
             total_pages = (len(country_items) + items_per_page - 1) // items_per_page
@@ -753,7 +721,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 markup.row(types.InlineKeyboardButton(f"{info.get('name', code)} ({display_price} روبل)", callback_data=f'buy_{service}_{app_id}_{code}'))
             
             nav_buttons = []
-            # 💡 يتم تجميع الكولباك ليعمل مع TigerSMS و SmsMan
             base_callback = f'show_countries_{service}_{app_id}_page_' 
             
             if page > 1:
@@ -766,14 +733,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='Buynum'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"اختر الدولة التي تريدها: (صفحة {page}/{total_pages})", reply_markup=markup)
 
-        # 💡 [بداية التعديل الأساسي: معالج الشراء]
         elif data.startswith('buy_'):
             parts = data.split('_')
             service, app_id, country_code = parts[1], parts[2], parts[3]
             
             bot.answer_callback_query(call.id, "✅ جاري معالجة طلب الرقم...")
 
-            # 💡 جلب معلومات الدولة والسعر من البيانات المخزنة
             country_info = data_file.get('countries', {}).get(service, {}).get(app_id, {}).get(country_code, {})
             
             price = country_info.get('price', 0)
@@ -782,10 +747,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 bot.send_message(chat_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية.*\n\n*الرصيد المطلوب:* {price} روبل.\n*رصيدك الحالي:* {user_balance} روبل.\n\n*يمكنك شحن رصيدك عبر زر شحن الرصيد.*", parse_mode='Markdown')
                 return
 
-            # *** 1. الاتصال بالـ API وجلب الرقم ***
             result = None
             if service == 'smsman':
-                # تم الإبقاء على كود smsman كما هو مع الإشارة إلى التعديل المطلوب لـ smsman_api.py
                 result = smsman_api['request_smsman_number'](app_id, country_code)
                 if result and 'request_id' in result:
                     result['success'] = True
@@ -802,7 +765,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 
                 remaining_balance = user_balance - price
                 
-                # *** 2. إعداد الأزرار الجديدة (التحديث اليدوي) ***
                 markup = types.InlineKeyboardMarkup()
                 markup.row(types.InlineKeyboardButton('♻️ - تحديث (جلب الكود)', callback_data=f'Code_{service}_{request_id}'))
                 markup.row(types.InlineKeyboardButton('❌ إلغاء الطلب', callback_data=f'cancel_{service}_{request_id}'))
@@ -812,7 +774,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 country_name = country_info.get('name', 'غير معروف')
                 country_flag = country_info.get('flag', '') 
 
-                # 💡 استخدام التوقيت المحلي لزيادة الدقة
                 tz = pytz.timezone('Asia/Aden') 
                 current_time = datetime.now(tz).strftime('%I:%M:%S %p')
                 
@@ -833,7 +794,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 sent_message = bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
                 new_message_id = sent_message.message_id
                 
-                # *** 3. حفظ البيانات في MongoDB ***
                 update_user_balance(user_id, -price, is_increment=True)
                 
                 register_user(
@@ -853,7 +813,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     }
                 )
                 
-                # حفظ الطلب في active_requests لسهولة الوصول إليه
                 data_file = get_bot_data()
                 active_requests = data_file.get('active_requests', {})
                 active_requests[request_id] = { 
@@ -872,10 +831,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 save_bot_data(data_file)
                 
             else:
-                # 💡 رسالة فشل معطاة للمستخدم
                 bot.send_message(chat_id, "❌ فشل طلب الرقم. قد يكون غير متوفر أو أن رصيدك في الخدمة غير كافٍ.")
                 
-        # 💡 [المعالج المُعدَّل: التحديث اليدوي للكود وإرسال الإشعار]
         elif data.startswith('Code_'):
             parts = data.split('_')
             
@@ -888,7 +845,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             
             bot.answer_callback_query(call.id, "⏳ جاري التحقق من وصول الكود...")
 
-            # 1. استرجاع بيانات الطلب من active_requests
             data_file = get_bot_data()
             active_requests = data_file.get('active_requests', {})
             active_request_info = active_requests.get(request_id, {})
@@ -897,31 +853,24 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 bot.send_message(chat_id, "❌ عذراً، لم يتم العثور على معلومات الطلب النشط في قاعدة البيانات. يرجى التواصل مع الدعم.")
                 return
 
-            # 2. استدعاء API لمرة واحدة
             result = None
             if service_name == 'smmkings': 
                 result = smm_kings_api.get_otp(request_id)
             elif service_name == 'smsman':
-                # يتم استخدام دالة get_smsman_code المعدلة (المفترض تعديلها في smsman_api.py)
                 result = smsman_api['get_smsman_code'](request_id) 
             elif service_name == 'tigersms':
                 result = tiger_sms_client.get_code(request_id)
 
             otp_code = result.get('code') if result and result.get('status') in ['success', 'COMPLETED'] and result.get('code') else None 
             
-            # 3. معالجة النتيجة
             if otp_code:
-                # [نجاح - تم العثور على الكود]
                 
-                # إعداد لوحة المفاتيح النهائية
                 markup_final = types.InlineKeyboardMarkup().row(
                     types.InlineKeyboardButton('🔙 - رجوع للقائمة الرئيسية.', callback_data='back')
                 )
                 
-                # أ. إرسال الكود في رسالة جديدة
                 bot.send_message(chat_id, f"✅ *رمزك هو: {otp_code}*\n\nالرقم جاهز للاستخدام.", parse_mode='Markdown')
                 
-                # ب. إخبار API بـ "تم الاستخدام" (Completed) لإنهاء الطلب
                 try:
                     if service_name == 'smsman':
                         smsman_api['set_smsman_status'](request_id, 6) 
@@ -934,10 +883,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     logging.error(f"Failed to set status to USED for {service_name} Req ID {request_id}: {e}")
                 
                 
-                # ج. تعديل الرسالة الأصلية لوضع علامة (مكتمل) وإزالة الأزرار
                 try:
                     new_text = call.message.text.replace("••• Pending", "✅ Completed")
-                    # إزالة رسالة التحقق السابقة إذا وجدت
                     new_text = re.sub(r'\n\*تم التحقق الآن في .+\*\n', '', new_text) 
                     
                     bot.edit_message_text(
@@ -946,15 +893,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 except Exception as e:
                     logging.error(f"Failed to edit message upon completion: {e}")
                     
-                # د. تحديث قاعدة البيانات وحذف الطلب من active_requests
                 register_user(user_id, user_doc.get('first_name'), user_doc.get('username'), update_purchase_status={'request_id': request_id, 'status': 'completed'})
                 
-                # حذف الطلب من الطلبات النشطة
                 if request_id in active_requests:
                     del active_requests[request_id]
                     save_bot_data(data_file)
                 
-                # 💡 هـ. إرسال المنشور الترويجي إلى القناة (الإضافة المطلوبة)
                 try:
                     country_name = active_request_info.get('country_name', 'غير معروف')
                     country_flag = active_request_info.get('country_flag', '')
@@ -979,16 +923,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     logging.error(f"Failed to send success notification to channel: {e}")
 
             else:
-                # [فشل - الكود لم يصل بعد أو حالة خطأ]
-                
-                if result and result.get('status') == 'error': 
-                    error_message = result.get('message', 'خطأ غير معروف')
-                    
-                    if error_message == 'STATUS_CANCELLED':
-                        bot.send_message(chat_id, "❌ **فشل جلب الكود:** الرقم غير صالح أو تم إلغاؤه تلقائياً من الموقع. يرجى إلغاء الطلب (إذا كان مؤهلاً لاسترداد الرصيد) والمحاولة برقم جديد.", parse_mode='Markdown')
-                        return
-
-                # الإضافة الرئيسية لحل مشكلة التحديث اليدوي: إخبار API بالاستمرار في الانتظار
                 try:
                     if service_name == 'smmkings':
                         smm_kings_api.set_status(request_id, 'STATUS_WAIT_CODE') 
@@ -1005,10 +939,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 
                 current_text = call.message.text
                 
-                # إزالة أي رسالة تحقق سابقة
                 new_text = re.sub(r'\n\*تم التحقق الآن في .+\*\n', '', current_text)
                 
-                # إضافة رسالة التحقق الجديدة
                 tz = pytz.timezone('Asia/Aden') 
                 check_time = datetime.now(tz).strftime('%I:%M:%S %p')
                 
@@ -1033,7 +965,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             result = None
             success_api_call = False 
             
-            # 1. محاولة الإلغاء في API الموقع
             if service == 'smmkings': 
                 result = smm_kings_api.cancel_request(request_id_raw)
                 if result and result.get('success'):
@@ -1051,10 +982,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             
             logging.info(f"Response from {service} for CANCEL Req ID {request_id_raw}: {result}")
             
-            # 2. إذا نجح الإلغاء في API، ننتقل لمعالجة الرصيد
             if success_api_call:
                 
-                # 💡 [استخدام الدالة الجديدة المرنة لضمان العثور على السعر]
                 request_info_from_purchases = get_cancellable_request_info(user_doc, request_id_raw)
                 
                 if request_info_from_purchases and request_info_from_purchases.get('price_to_restore', 0) > 0:
@@ -1062,10 +991,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                         price_to_restore = request_info_from_purchases.get('price_to_restore')
                         request_id_in_db = request_info_from_purchases.get('request_id_in_db')
                         
-                        # أ. استرجاع الرصيد للمستخدم
                         update_user_balance(user_id, price_to_restore, is_increment=True)
                         
-                        # ب. تحديث حالة الطلب في سجل المشتريات إلى "cancelled"
                         register_user(
                             user_id, 
                             user_doc.get('first_name'), 
@@ -1076,7 +1003,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                             }
                         )
                         
-                        # ج. إزالة الطلب من الطلبات النشطة (إذا كان موجوداً)
                         data_file = get_bot_data()
                         active_requests = data_file.get('active_requests', {})
                         if str(request_id_in_db) in active_requests:
@@ -1084,10 +1010,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                             data_file['active_requests'] = active_requests
                             save_bot_data(data_file)
                         
-                        # د. إرسال رسالة النجاح
                         bot.send_message(chat_id, f"✅ **تم إلغاء الطلب بنجاح!** تم استرجاع مبلغ *{price_to_restore}* روبل إلى رصيدك.", parse_mode='Markdown')
                         
-                        # هـ. تعديل الرسالة الأصلية لوضع علامة (ملغى) وإزالة الأزرار
                         try:
                             final_text = call.message.text.replace("••• Pending", "❌ Cancelled")
                             final_text = re.sub(r'\n\*تم التحقق الآن في .+\*\n', '', final_text) 
@@ -1101,15 +1025,12 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                         bot.send_message(chat_id, f"⚠️ تم إلغاء طلبك في الموقع، ولكن حدث **خطأ أثناء استرجاع رصيدك**. يرجى التواصل مع الدعم (@{ESM7AT}) وذكر آيدي الطلب: `{request_id_raw}`.", parse_mode='Markdown')
                         
                 else:
-                    # هذه الحالة تعني أن الطلب ألغي في الموقع لكن لم يتم العثور عليه في سجل المشتريات.
                     bot.send_message(chat_id, f"⚠️ تم إلغاء طلبك في الموقع بنجاح، لكنه **غير مسجل كطلب معلق في سجل مشترياتك**. لم يتم إرجاع الرصيد تلقائياً. يرجى التواصل فوراً مع الدعم (@{ESM7AT}) وتقديم آيدي الطلب: `{request_id_raw}`.", parse_mode='Markdown')
 
             else:
-                # هذا الرد في حالة فشل الإلغاء في API الموقع
                 bot.send_message(chat_id, "❌ فشل إلغاء الطلب في الموقع. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.")
         
         elif data.startswith('ChangeNumber_'):
-            # (باقي كود تغيير الرقم)
             bot.send_message(chat_id, "🔄 *سيتم إضافة وظيفة تغيير الرقم قريباً.*")
             return
 
@@ -1126,13 +1047,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot.send_message(user_id, "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
             return
         
-        # 1. حفظ الرابط وتغيير الحالة لطلب الكمية
         user_state['link'] = link
         user_state['state'] = 'awaiting_smm_quantity'
         bot_data['user_states'][user_id] = user_state
         save_bot_data(bot_data)
         
-        # 2. طلب الكمية من المستخدم
         message_text = (
             f"🔗 **تم حفظ الرابط:** `{link}`\n"
             f"🔢 **الخطوة 2:** يرجى إرسال **الكمية المطلوبة** (أقل كمية هي {user_state.get('min', '1')}، والحد الأقصى {user_state.get('max', 'غير محدود')})."
@@ -1166,7 +1085,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         link = user_state.get('link')
         rate_per_k = float(user_state.get('rate', 0))
         min_qty = int(user_state.get('min', 1))
-        max_qty = int(user_state.get('max', 999999999)) # قيمة عالية لـ "غير محدود"
+        max_qty = int(user_state.get('max', 999999999)) 
         service_name = user_state.get('service_name', 'خدمة رشق')
         
         if quantity < min_qty:
@@ -1177,31 +1096,25 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
              bot.send_message(user_id, f"❌ *الكمية المدخلة أكبر من الحد الأقصى. الحد الأقصى هو {max_qty}.*", parse_mode='Markdown')
              return
             
-        # 3. حساب السعر وتأكيد الطلب
         price = (quantity / 1000) * rate_per_k
         user_doc = get_user_doc(user_id)
         user_balance = user_doc.get('balance', 0)
         
         if user_balance < price:
             bot.send_message(user_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية. الرصيد المطلوب: {price:.2f} روبل.*", parse_mode='Markdown')
-            # 💡 حذف حالة المستخدم
             del bot_data['user_states'][user_id]
             save_bot_data(bot_data)
             return
 
-        # 4. تأكيد الشراء وتنفيذ الطلب
         try:
-            # 💡 استدعاء API SMMKings لتقديم الطلب
             order_result = smm_kings_api.add_order(service_id, link, quantity)
             
             if order_result and 'order' in order_result:
                 order_id = str(order_result.get('order'))
                 remaining_balance = user_balance - price
                 
-                # خصم الرصيد
                 update_user_balance(user_id, -price, is_increment=True)
                 
-                # تسجيل العملية
                 register_user(
                     user_id, 
                     user_doc.get('first_name'), 
@@ -1218,7 +1131,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     }
                 )
                 
-                # إرسال رسالة النجاح
                 message_text = (
                     f"✅ **تم تقديم طلب الرشق بنجاح!**\n"
                     f"🔥 **الخدمة:** `{service_name}`\n"
@@ -1237,6 +1149,5 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             logging.error(f"SMMKings add_order exception: {e}")
             bot.send_message(user_id, "❌ **فشل حرج:** حدث خطأ غير متوقع أثناء محاولة تقديم الطلب. لم يتم خصم رصيدك. يرجى التواصل مع الدعم.", parse_mode='Markdown')
 
-        # 5. حذف حالة المستخدم سواء نجح أو فشل
         del bot_data['user_states'][user_id]
         save_bot_data(bot_data)
