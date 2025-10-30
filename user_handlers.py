@@ -161,7 +161,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot.send_message(chat_id, text, parse_mode='Markdown', reply_markup=markup)
             
     # =========================================================================
-    # 🚀 [الدالة الجديدة: عرض فئات SMM] (مُعدَّلة بناءً على طلبك الأخير)
+    # 🚀 [الدالة المصححة: عرض فئات SMM] (الإصلاح رقم 1)
     # =========================================================================
     def show_smm_categories(chat_id, message_id):
         """
@@ -177,14 +177,18 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         for service_id, info in services.items():
             category_name = info.get('category_name') 
             
-            # تحديد سعر المستخدم (نفترض user_rate_per_k تم حسابه في admin_handlers)
-            rate_api = float(info.get('rate', '0.00')) 
-            # نستخدم rate_api * 2 كتقدير لـ user_rate_per_k إذا لم يكن موجوداً
-            user_price_per_k = info.get('user_rate_per_k', rate_api * 2) 
+            # 💥 الإصلاح رقم 1: نقرأ السعر الذي قام المشرف بتحديده مباشرة
+            user_price = info.get('user_price', 0) 
             min_qty = info.get('min', 0)
             
+            # تحويل السعر للتأكد من أنه رقم
+            try:
+                user_price = float(user_price)
+            except (ValueError, TypeError):
+                user_price = 0
+            
             # 📌 نقطة تحقق إضافية: يجب أن يكون السعر للمستخدم أكبر من صفر والحد الأدنى للكمية أكبر من صفر
-            if category_name and user_price_per_k > 0 and min_qty > 0:
+            if category_name and user_price > 0 and min_qty > 0:
                 categories[category_name].append(service_id)
                 
         # 3. التحقق من وجود فئات
@@ -234,7 +238,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         
         return
     # =========================================================================
-    # 🚀 [نهاية الدالة الجديدة]
+    # 🚀 [نهاية الدالة المصححة]
     # =========================================================================
 
     # ... (باقي معالجات الرسائل) ...
@@ -395,7 +399,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smm_category_' - عرض الخدمات داخل الفئة من المخزن] (تم التحديث)
+        # 🚀 [معالج 'smm_category_' - عرض الخدمات داخل الفئة من المخزن] (الإصلاح رقم 2)
         # =========================================================================
         elif data.startswith('smm_category_'):
             # 💡 تم تغيير prefix إلى 'smm_category_' 
@@ -417,12 +421,17 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 stored_safe_name = stored_category_name.replace(" ", "_").replace("[", "").replace("]", "").replace("/", "-").replace("(", "").replace(")", "").replace(".", "").replace(",", "")
                 
                 if stored_safe_name == clean_category_name_raw: 
-                    # التحقق من أن السعر والحد الأدنى للكمية متاحين > 0
-                    rate_api = float(s_info.get('rate', '0.00')) 
-                    user_price_per_k = s_info.get('user_rate_per_k', rate_api * 2) 
+                    
+                    # 💥 الإصلاح رقم 2: قراءة السعر من المفتاح الصحيح 'user_price'
+                    user_price = s_info.get('user_price', 0) 
                     min_qty = s_info.get('min', 0)
                     
-                    if s_info.get('name') and user_price_per_k > 0 and min_qty > 0:
+                    try:
+                        user_price = float(user_price)
+                    except (ValueError, TypeError):
+                        user_price = 0
+                    
+                    if s_info.get('name') and user_price > 0 and min_qty > 0:
                         services_in_category[s_id] = s_info
                 
             if not services_in_category:
@@ -440,10 +449,13 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 min_order = str(service_info.get('min', 'Min'))
                 
                 # استخدام سعر المستخدم المخزن/المحسوب
-                rate_api = float(service_info.get('rate', '0.00'))
-                user_rate_per_k = service_info.get('user_rate_per_k', rate_api * 2) 
+                user_price = service_info.get('user_price', 0) 
+                try:
+                    user_price = float(user_price)
+                except (ValueError, TypeError):
+                    user_price = 0
                 
-                markup.add(types.InlineKeyboardButton(f"{name} | Min {min_order} | ₽ {user_rate_per_k:.2f}", callback_data=f'smm_order_{service_id}'))
+                markup.add(types.InlineKeyboardButton(f"{name} | Min {min_order} | ₽ {user_price:.2f}", callback_data=f'smm_order_{service_id}'))
                 
             markup.add(types.InlineKeyboardButton('🔙 - رجوع لقائمة الفئات', callback_data='smm_services'))
             
@@ -455,7 +467,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smm_order_' - جلب التفاصيل من المخزن وبدء الطلب]
+        # 🚀 [معالج 'smm_order_' - جلب التفاصيل من المخزن وبدء الطلب] (الإصلاح رقم 3)
         # =========================================================================
         elif data.startswith('smm_order_'):
             service_id = data.split('_')[-1]
@@ -470,18 +482,21 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 return
             
             name = service_details.get('name', 'خدمة رشق')
-            rate_api = float(service_details.get('rate', '0.00')) 
             min_order = str(service_details.get('min', '1'))
             max_order = str(service_details.get('max', 'غير محدود'))
             
-            # 💡 استخدام سعر المستخدم المخزن/المحسوب
-            user_rate_per_k = service_details.get('user_rate_per_k', rate_api * 2) 
+            # 💥 الإصلاح رقم 3: قراءة السعر من المفتاح الصحيح 'user_price'
+            user_price = service_details.get('user_price', 0)
+            try:
+                user_price = float(user_price)
+            except (ValueError, TypeError):
+                user_price = 0
 
             bot_data['user_states'][user_id] = {
                 'state': 'awaiting_smm_link',
                 'service_id': service_id,
                 'service_name': name,
-                'rate': user_rate_per_k, 
+                'rate': user_price, # 👈 تخزين السعر الصحيح (لكل 1000)
                 'min': min_order,
                 'max': max_order
             }
@@ -489,7 +504,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             
             message_text = (
                 f"✅ **أنت على وشك طلب خدمة:** `{name}`\n"
-                f"💰 **السعر:** `{user_rate_per_k:.2f}` روبل لكل 1000\n"
+                f"💰 **السعر:** `{user_price:.2f}` روبل لكل 1000\n"
                 f"🔢 **الكمية:** الحد الأدنى {min_order} والأقصى {max_order}\n\n"
                 f"🔗 **الخطوة 1:** يرجى إرسال **الرابط/الـ URL** الذي تريد الرشق إليه (مثال: رابط صورة، رابط حساب، إلخ).\n"
             )
@@ -1117,7 +1132,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         
         service_id = user_state.get('service_id')
         link = user_state.get('link')
-        rate_per_k = float(user_state.get('rate', 0))
+        rate_per_k = float(user_state.get('rate', 0)) # السعر لكل 1000 وحدة (تم تخزينه مسبقاً)
         min_qty = int(user_state.get('min', 1))
         max_qty = int(user_state.get('max', 999999999)) 
         service_name = user_state.get('service_name', 'خدمة رشق')
