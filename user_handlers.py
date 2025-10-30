@@ -1,4 +1,4 @@
-From telebot import types
+from telebot import types
 import json
 import time
 import logging
@@ -7,6 +7,7 @@ import random
 from datetime import datetime 
 import re 
 import pytz 
+from collections import defaultdict # 💡 تم إضافة استيراد defaultdict هنا
 
 # تهيئة نظام التسجيل
 logging.basicConfig(
@@ -160,52 +161,73 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot.send_message(chat_id, text, parse_mode='Markdown', reply_markup=markup)
             
     # =========================================================================
-    # 🚀 [الدالة الجديدة: عرض فئات SMM]
+    # 🚀 [الدالة الجديدة: عرض فئات SMM] (مُعدَّلة بناءً على طلبك الأخير)
     # =========================================================================
     def show_smm_categories(chat_id, message_id):
         """
-        تجلب خدمات الرشق المخزنة محلياً، وتجمعها حسب 'category_name'، ثم تعرضها للمستخدم.
+        تجلب خدمات الرشق المخزنة محلياً، وتجمعها حسب 'category_name' مع التحقق من السعر.
         """
-        markup = types.InlineKeyboardMarkup()
         
-        # 1. جلب الخدمات المخزنة محلياً
+        # 1. جلب البيانات
         bot_data = get_bot_data()
-        all_smm_services = bot_data.get('smmkings_services', {}) 
+        services = bot_data.get('smmkings_services', {})
         
-        # 2. تجميع الخدمات حسب الفئة وحساب عدد الخدمات
-        categories_with_count = {}
-        for service_id, info in all_smm_services.items():
-            # *** استخدام المفتاح 'category_name' المصحح ***
-            category_name = info.get('category_name', 'فئة عامة') 
+        # 2. تجميع الخدمات حسب الفئة (الجزء الحاسم)
+        categories = defaultdict(list)
+        for service_id, info in services.items():
+            category_name = info.get('category_name') 
             
-            # 💡 التأكد من أن الخدمة تحتوي على اسم وسعر قبل إضافتها للفئة
-            if info.get('name') and info.get('rate') is not None:
-                categories_with_count[category_name] = categories_with_count.get(category_name, 0) + 1
-        
-        if not categories_with_count:
-            message = "❌ لا توجد فئات لخدمات الرشق متاحة حاليًا."
+            # تحديد سعر المستخدم (نفترض user_rate_per_k تم حسابه في admin_handlers)
+            rate_api = float(info.get('rate', '0.00')) 
+            # نستخدم rate_api * 2 كتقدير لـ user_rate_per_k إذا لم يكن موجوداً
+            user_price_per_k = info.get('user_rate_per_k', rate_api * 2) 
+            min_qty = info.get('min', 0)
+            
+            # 📌 نقطة تحقق إضافية: يجب أن يكون السعر للمستخدم أكبر من صفر والحد الأدنى للكمية أكبر من صفر
+            if category_name and user_price_per_k > 0 and min_qty > 0:
+                categories[category_name].append(service_id)
+                
+        # 3. التحقق من وجود فئات
+        if not categories:
+            message = "❌ لا توجد فئات الخدمات الرشق متاحة حالياً. يرجى من المشرف جلب وتحديث الخدمات وتحديد أسعارها."
+            markup = types.InlineKeyboardMarkup()
             markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
+            
             try:
-                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
-            except:
-                bot.send_message(chat_id, message, parse_mode='Markdown', reply_markup=markup)
+                if message_id:
+                    bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+                else:
+                    bot.send_message(chat_id, message, parse_mode='Markdown', reply_markup=markup)
+            except telebot.apihelper.ApiTelegramException as e:
+                if "message is not modified" not in str(e):
+                    bot.send_message(chat_id, message, parse_mode='Markdown', reply_markup=markup)
+            except Exception:
+                 bot.send_message(chat_id, message, parse_mode='Markdown', reply_markup=markup)
             return
+
+        # 4. إنشاء أزرار الفئات
+        markup = types.InlineKeyboardMarkup(row_width=1)
         
-        # 3. بناء الأزرار للفئات
-        for category_name in sorted(categories_with_count.keys()):
-            count = categories_with_count[category_name]
+        # فرز الفئات أبجدياً لتنظيم العرض
+        for category_name in sorted(categories.keys()):
+            # ترميز اسم الفئة لضمان سلامة الكولباك داتا (شكل أنظف)
+            safe_category_name = category_name.replace(" ", "_").replace("[", "").replace("]", "").replace("/", "-").replace("(", "").replace(")", "").replace(".", "").replace(",", "")
             
-            # إنشاء callback_data نظيف
-            clean_category_name = category_name.replace(' ', '_')
-            
-            markup.add(types.InlineKeyboardButton(f"🔗 {category_name} ({count} خدمات)", callback_data=f'smm_cat_{clean_category_name}'))
-            
+            markup.add(types.InlineKeyboardButton(
+                f"🚀 {category_name} ({len(categories[category_name])})",
+                # 💡 تم استخدام prefix 'smm_category_' كما طلبت
+                callback_data=f'smm_category_{safe_category_name}' 
+            ))
+
         markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
-        
-        message_text = "🚀 *اختر الفئة التي تريد الرشق لها:*"
+
+        message_text = "🚀 *اختر فئة الخدمة التي ترغب بطلبها:*"
         
         try:
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown', reply_markup=markup)
+            if message_id:
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown', reply_markup=markup)
+            else:
+                 bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
         except telebot.apihelper.ApiTelegramException as e:
             if "message is not modified" not in str(e):
                 bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
@@ -373,11 +395,13 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smm_cat_' - عرض الخدمات داخل الفئة من المخزن] 
+        # 🚀 [معالج 'smm_category_' - عرض الخدمات داخل الفئة من المخزن] (تم التحديث)
         # =========================================================================
-        elif data.startswith('smm_cat_'):
-            clean_category_name_raw = data.replace('smm_cat_', '', 1) 
-            category_name = clean_category_name_raw.replace('_', ' ') 
+        elif data.startswith('smm_category_'):
+            # 💡 تم تغيير prefix إلى 'smm_category_' 
+            clean_category_name_raw = data.replace('smm_category_', '', 1) 
+            # إعادة تحويل الاسم المعرَّم للعرض
+            category_name = clean_category_name_raw.replace('_', ' ').replace('-', '/') 
             
             markup = types.InlineKeyboardMarkup()
             
@@ -389,8 +413,16 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             for s_id, s_info in all_smm_services.items():
                 stored_category_name = s_info.get('category_name', 'فئة عامة')
                 
-                if stored_category_name.replace(' ', '_') == clean_category_name_raw: 
-                    if s_info.get('name') and s_info.get('rate') is not None:
+                # إعادة ترميز الاسم المخزن للمقارنة مع الاسم الموجود في الكولباك داتا
+                stored_safe_name = stored_category_name.replace(" ", "_").replace("[", "").replace("]", "").replace("/", "-").replace("(", "").replace(")", "").replace(".", "").replace(",", "")
+                
+                if stored_safe_name == clean_category_name_raw: 
+                    # التحقق من أن السعر والحد الأدنى للكمية متاحين > 0
+                    rate_api = float(s_info.get('rate', '0.00')) 
+                    user_price_per_k = s_info.get('user_rate_per_k', rate_api * 2) 
+                    min_qty = s_info.get('min', 0)
+                    
+                    if s_info.get('name') and user_price_per_k > 0 and min_qty > 0:
                         services_in_category[s_id] = s_info
                 
             if not services_in_category:
@@ -405,10 +437,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             # 2. بناء الأزرار للخدمات
             for service_id, service_info in services_in_category.items():
                 name = service_info.get('name', f"خدمة #{service_id}")
-                min_order = service_info.get('min', 'Min')
-                rate_api = float(service_info.get('rate', '0.00'))
+                min_order = str(service_info.get('min', 'Min'))
                 
-                user_rate_per_k = rate_api * 2 
+                # استخدام سعر المستخدم المخزن/المحسوب
+                rate_api = float(service_info.get('rate', '0.00'))
+                user_rate_per_k = service_info.get('user_rate_per_k', rate_api * 2) 
                 
                 markup.add(types.InlineKeyboardButton(f"{name} | Min {min_order} | ₽ {user_rate_per_k:.2f}", callback_data=f'smm_order_{service_id}'))
                 
@@ -441,7 +474,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             min_order = str(service_details.get('min', '1'))
             max_order = str(service_details.get('max', 'غير محدود'))
             
-            user_rate_per_k = rate_api * 2 
+            # 💡 استخدام سعر المستخدم المخزن/المحسوب
+            user_rate_per_k = service_details.get('user_rate_per_k', rate_api * 2) 
 
             bot_data['user_states'][user_id] = {
                 'state': 'awaiting_smm_link',
@@ -1034,7 +1068,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot.send_message(chat_id, "🔄 *سيتم إضافة وظيفة تغيير الرقم قريباً.*")
             return
 
-    # 💡 [معالج رسائل: إدخال الرابط لطلب SMM]
+        # 💡 [معالج رسائل: إدخال الرابط لطلب SMM]
     @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(message.from_user.id, {}).get('state') == 'awaiting_smm_link')
     def handle_smm_link_input(message):
         user_id = message.from_user.id
