@@ -1,4 +1,4 @@
-from telebot import types
+From telebot import types
 import json
 import time
 import logging
@@ -162,10 +162,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             
     # =========================================================================
     # 🚀 [الدالة المصححة: عرض فئات SMM مع ترقيم وفلترة]
+    # **تم التعديل لاستخدام category_id_short كمعرف فريد**
     # =========================================================================
     def show_smm_categories(chat_id, message_id, page=1):
         """
-        تجلب خدمات الرشق المخزنة محلياً، وتجمعها حسب 'category_name' مع ترقيم الصفحات، 
+        تجلب خدمات الرشق المخزنة محلياً، وتجمعها حسب 'category_id_short' مع ترقيم الصفحات، 
         وفلترة الخدمات التي لم يقم المشرف بتسعيرها (user_price > 0).
         """
         
@@ -173,9 +174,16 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         bot_data = get_bot_data()
         services = bot_data.get('smmkings_services', {})
         
+        # 💥 التعديل هنا: التجميع حسب الآيدي القصير (category_id_short) 
         categories_dict = defaultdict(list)
+        
+        # قائمة لتخزين أزواج (الآيدي القصير، الاسم المترجم)
+        category_map = {} 
+        
         for service_id, info in services.items():
             category_name = info.get('category_name') 
+            # 📌 يجب أن يتوفر هذا المفتاح بعد تحديث ملف admin_handlers.py
+            category_id_short = info.get('category_id_short') 
             user_price = info.get('user_price', 0) 
             min_qty = info.get('min', 0)
             
@@ -184,10 +192,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             except (ValueError, TypeError):
                 user_price = 0
             
-            # 📌 شرط العرض: يجب أن يكون السعر للمستخدم أكبر من صفر والحد الأدنى للكمية أكبر من صفر
-            # **هذا يضمن عرض الخدمات المسعرة فقط كما طلبت**
-            if category_name and user_price > 0 and min_qty > 0:
-                categories_dict[category_name].append(service_id)
+            # 📌 التعديل الحاسم: التجميع بالآيدي القصير
+            # شرط العرض: يجب أن يكون السعر للمستخدم أكبر من صفر والحد الأدنى للكمية أكبر من صفر ويجب وجود الآيدي القصير
+            if category_name and user_price > 0 and min_qty > 0 and category_id_short:
+                categories_dict[category_id_short].append(service_id)
+                category_map[category_id_short] = category_name # نستخدم الآيدي لتخزين الاسم
                 
         # 2. التحقق من وجود فئات
         if not categories_dict:
@@ -208,28 +217,27 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
 
         # 3. تطبيق الترقيم (Pagination)
         items_per_page = 10
-        # فرز الفئات أبجدياً لتنظيم العرض
-        sorted_category_names = sorted(categories_dict.keys()) 
-        total_categories = len(sorted_category_names)
+        # 📌 فرز الفئات الآن يكون حسب الآيدي القصير (المفاتيح)
+        sorted_category_ids = sorted(categories_dict.keys()) 
+        total_categories = len(sorted_category_ids)
         total_pages = (total_categories + items_per_page - 1) // items_per_page
         
         start_index = (page - 1) * items_per_page
         end_index = start_index + items_per_page
-        current_page_categories = sorted_category_names[start_index:end_index]
+        current_page_ids = sorted_category_ids[start_index:end_index] # استبدلنا Names بـ IDs
 
         # 4. إنشاء أزرار الفئات للصفحة الحالية
         markup = types.InlineKeyboardMarkup(row_width=1)
         
-        for category_name in current_page_categories:
-            # الترميز المختصر لتقليل حجم callback_data (لمنع خطأ BUTTON_DATA_INVALID)
-            safe_category_name = category_name.replace(" ", "_").replace("[", "").replace("]", "").replace("/", "-").replace("(", "").replace(")", "").replace(".", "").replace(",", "")
+        for category_id_short in current_page_ids: # نمر على الآيديات القصيرة
+            category_name = category_map[category_id_short] # نستخدم الآيدي لاسترجاع الاسم الطويل للعرض
             
-            # 💡 استخدام callback_data أقصر: smmc_ 
-            callback_data = f'smmc_{safe_category_name}'
+            # 💥 الحل الجذري: استخدام الآيدي القصير في الـ callback_data
+            callback_data = f'smmc_{category_id_short}' # هذا قصير جداً (مثلاً: smmc_Instagram)
             
             markup.add(types.InlineKeyboardButton(
-                f"🚀 {category_name} ({len(categories_dict[category_name])})",
-                callback_data=callback_data
+                f"🚀 {category_name} ({len(categories_dict[category_id_short])})", # العرض بالاسم الطويل
+                callback_data=callback_data # الكولباك بالآيدي القصير
             ))
             
         # 5. أزرار التنقل بين الصفحات
@@ -427,13 +435,11 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smmc_' - عرض الخدمات داخل الفئة من المخزن] (المعدَّل)
+        # 🚀 [معالج 'smmc_' - عرض الخدمات داخل الفئة من المخزن] (المُعدَّل للآيدي القصير)
         # =========================================================================
         elif data.startswith('smmc_'):
-            # 💡 تم تغيير البادئة إلى smmc_ لتقليل حجم الكولباك داتا
-            clean_category_name_raw = data.replace('smmc_', '', 1) 
-            # إعادة تحويل الاسم المعرَّم للعرض
-            category_name = clean_category_name_raw.replace('_', ' ').replace('-', '/') 
+            # 💡 التعديل: استخراج الآيدي القصير مباشرةً من الكولباك داتا
+            category_id_short = data.replace('smmc_', '', 1) 
             
             markup = types.InlineKeyboardMarkup()
             
@@ -442,14 +448,20 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
 
             # 1. فلترة الخدمات حسب الفئة
             services_in_category = {}
+            # نحتاج الاسم للعرض فقط في النهاية، يمكننا البحث عنه الآن 
+            category_name_for_display = "فئة غير معروفة" 
+            
             for s_id, s_info in all_smm_services.items():
-                stored_category_name = s_info.get('category_name', 'فئة عامة')
                 
-                # إعادة ترميز الاسم المخزن للمقارنة مع الاسم الموجود في الكولباك داتا
-                stored_safe_name = stored_category_name.replace(" ", "_").replace("[", "").replace("]", "").replace("/", "-").replace("(", "").replace(")", "").replace(".", "").replace(",", "")
+                # 💥 التعديل: المقارنة بالآيدي القصير المخزن
+                stored_category_id_short = s_info.get('category_id_short')
                 
-                if stored_safe_name == clean_category_name_raw: 
+                if stored_category_id_short == category_id_short: 
                     
+                    # قراءة الاسم للعرض (إذا وجد)
+                    if s_info.get('category_name'):
+                        category_name_for_display = s_info['category_name']
+                        
                     # 💥 الفلترة: قراءة السعر من المفتاح الصحيح 'user_price'
                     user_price = s_info.get('user_price', 0) 
                     min_qty = s_info.get('min', 0)
@@ -459,7 +471,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     except (ValueError, TypeError):
                         user_price = 0
                     
-                    # 📌 عرض الخدمة فقط إذا كانت مسعرة ولها حد أدنى
+                    # 📌 عرض الخدمة فقط إذا كانت مسعرة ولها حد أدنى واسم
                     if s_info.get('name') and user_price > 0 and min_qty > 0:
                         services_in_category[s_id] = s_info
                 
@@ -467,9 +479,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 bot.answer_callback_query(call.id, "❌ لا توجد خدمات متاحة في هذه الفئة حاليًا.")
                 markup.add(types.InlineKeyboardButton('🔙 - رجوع لقائمة الفئات', callback_data='smm_services'))
                 try:
-                    bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name}:*", parse_mode='Markdown', reply_markup=markup)
+                    bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name_for_display}:*", parse_mode='Markdown', reply_markup=markup)
                 except:
-                    bot.send_message(chat_id, f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name}:*", parse_mode='Markdown', reply_markup=markup)
+                    bot.send_message(chat_id, f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name_for_display}:*", parse_mode='Markdown', reply_markup=markup)
                 return
 
             # 2. بناء الأزرار للخدمات
@@ -489,10 +501,10 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             markup.add(types.InlineKeyboardButton('🔙 - رجوع لقائمة الفئات', callback_data='smm_services'))
             
             try:
-                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name}:*", parse_mode='Markdown', reply_markup=markup)
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name_for_display}:*", parse_mode='Markdown', reply_markup=markup)
             except telebot.apihelper.ApiTelegramException as e:
                 if "message is not modified" not in str(e):
-                    bot.send_message(chat_id, f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name}:*", parse_mode='Markdown', reply_markup=markup)
+                    bot.send_message(chat_id, f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name_for_display}:*", parse_mode='Markdown', reply_markup=markup)
             return
 
         # =========================================================================
