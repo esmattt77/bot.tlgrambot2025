@@ -9,6 +9,7 @@ logging.basicConfig(
 )
 
 # *** مهم: استبدل YOUR_MONGO_CONNECTION_STRING برابط الاتصال الفعلي الخاص بك ***
+# استخدم رابط الاتصال الذي أرسلته لي مسبقاً
 MONGO_URI = "mongodb+srv://Esmat:_.SASet#aKcU6Zu@bottlegrmbot2025.gccpnku.mongodb.net/?retryWrites=true&w=majority&appName=bottlegrmbot2025" 
 
 try:
@@ -32,7 +33,6 @@ def get_user_doc(user_id):
     """
     جلب مستند المستخدم بالكامل.
     """
-    # 💡 [ملاحظة]: يفضل تخزين الـ _id دائماً كسلسلة نصية (str) لتجنب مشاكل النوع
     return users_collection.find_one({"_id": str(user_id)})
 
 def get_user_balance(user_id):
@@ -43,29 +43,27 @@ def get_user_balance(user_id):
 def update_user_balance(user_id, amount, is_increment=True):
     """تحديث (إضافة/خصم) رصيد المستخدم"""
     user_id_str = str(user_id)
+    
     if is_increment:
         update_op = {"$inc": {"balance": amount}}
     else:
-        # هذه الحالة لا تستخدم عادةً لزيادة/نقصان الرصيد، بل لضبطه على قيمة محددة
-        update_op = {"$set": {"balance": amount}} 
+        update_op = {"$set": {"balance": amount}} # لضبط قيمة محددة
         
     users_collection.update_one(
         {"_id": user_id_str},
+        # 💡 ندمج العمليات ونستخدم $set لتحديث حقل 'id' للتأكد من وجوده
         {**update_op, "$set": {"id": user_id_str}},
         upsert=True
     )
 
 def register_user(user_id, first_name, username, new_purchase=None, update_purchase_status=None, delete_purchase_id=None, referrer_id=None):
     """
-    🛠️ [مُراجعة للتأكد من دعم SMMKings]
-    تسجيل/تحديث بيانات المستخدم ومعالجة سجل المشتريات بمرونة عالية، ومعالجة الإحالة.
+    تسجيل/تحديث بيانات المستخدم ومعالجة سجل المشتريات ومعالجة الإحالة.
     """
     user_id_str = str(user_id)
-    
-    # 1. جلب المستند الحالي
     user_doc = users_collection.find_one({'_id': user_id_str})
+    is_new_user = user_doc is None
     
-    # 2. إعداد الحقول الأساسية للتحديث
     update_data = {
         "first_name": first_name,
         "username": username,
@@ -73,88 +71,44 @@ def register_user(user_id, first_name, username, new_purchase=None, update_purch
     }
     
     # 3. معالجة الإحالة (Referral)
-    
-    # التحقق مما إذا كان المستخدم جديداً (لم يتم العثور على مستند)
-    is_new_user = user_doc is None
-    
-    if is_new_user and referrer_id:
+    if is_new_user and referrer_id and str(referrer_id) != user_id_str:
         referrer_id_str = str(referrer_id)
-        
-        # التأكد من أن المُحيل ليس هو نفسه المستخدم الجديد
-        if referrer_id_str != user_id_str:
-            
-            # التأكد من أن المُحيل موجود في قاعدة البيانات
-            referrer_doc = users_collection.find_one({'_id': referrer_id_str})
-            
-            if referrer_doc:
-                # أ. تخزين معرف المُحيل للمستخدم الجديد
-                update_data["referred_by"] = referrer_id_str
-                
-                # ب. منح مكافأة الإحالة للمُحيل (0.25 روبل)
-                REFERRAL_BONUS = 0.25
-                update_user_balance(referrer_id_str, REFERRAL_BONUS, is_increment=True)
-                
-                logging.info(f"User {user_id_str} referred by {referrer_id_str}. Awarded {REFERRAL_BONUS} RUB to referrer.")
-            else:
-                logging.info(f"Referrer ID {referrer_id_str} not found in DB.")
-        else:
-            logging.info(f"Self-referral attempt detected by {user_id_str}, ignored.")
+        if users_collection.find_one({'_id': referrer_id_str}):
+            # A. تخزين معرف المُحيل للمستخدم الجديد في $setOnInsert
+            # B. منح مكافأة الإحالة (0.25 روبل)
+            REFERRAL_BONUS = 0.25
+            update_user_balance(referrer_id_str, REFERRAL_BONUS, is_increment=True)
+            logging.info(f"User {user_id_str} referred by {referrer_id_str}. Awarded {REFERRAL_BONUS} RUB to referrer.")
 
-
-    # 4. معالجة سجل المشتريات (هذه الدالة مرنة بما يكفي لدعم شراء الرشق)
+    # 4. معالجة سجل المشتريات
+    purchases = user_doc.get("purchases", []) if user_doc else []
     
-    # تهيئة سجل المشتريات (إذا لم يكن موجوداً)
-    purchases = user_doc.get("purchases", []) if user_doc and user_doc.get("purchases") is not None else []
-    
-    # أ. إضافة سجل شراء جديد
     if new_purchase:
-        if 'request_id' in new_purchase:
-             new_purchase['request_id'] = str(new_purchase['request_id'])
-             
-        # يتم تسجيل عمليات الرشق (SMMKings) بحالة 'sh_purchased' في user_handlers.py
+        if 'request_id' in new_purchase: new_purchase['request_id'] = str(new_purchase['request_id'])
         purchases.append(new_purchase)
     
-    # ب. تحديث حالة سجل شراء موجود (إلغاء أو إتمام)
     if update_purchase_status:
         request_id_to_update = str(update_purchase_status.get('request_id')) 
         new_status = update_purchase_status.get('status')
-        
-        found = False
         for p in purchases:
-            # البحث عن الطلب سواء كان رقم وهمي أو طلب رشق
             if str(p.get('request_id')) == request_id_to_update: 
                 p['status'] = new_status
-                found = True
                 break
         
-        if not found:
-             print(f"Warning: Purchase ID {request_id_to_update} not found for status update for user {user_id_str}.")
-
-    # ج. حذف سجل شراء موجود
     if delete_purchase_id:
         purchases = [p for p in purchases if str(p.get('request_id')) != str(delete_purchase_id)]
         
-    # 5. دمج التحديثات
-    
     update_data['purchases'] = purchases
     
-    # 6. تنفيذ عملية التحديث/الإنشاء
-    
-    # إعداد البيانات التي سيتم تعيينها عند الإنشاء فقط
+    # 5. تنفيذ عملية التحديث/الإنشاء
     set_on_insert_data = {
         "balance": 0,
         "join_date": time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
     }
     
-    # إذا كان المستخدم جديداً ومُحالاً، سنحتاج لتعيين "referred_by" في $setOnInsert لضمان تخزينه عند الإنشاء
-    if is_new_user and referrer_id and str(referrer_id) != user_id_str:
-        # إذا تم تخزينها في update_data بالفعل، لا نحتاج لتكرارها هنا، لكن للتأكد:
-        if "referred_by" in update_data:
-             set_on_insert_data["referred_by"] = update_data["referred_by"]
-             # إذا تم تخزينها في $setOnInsert، نزيلها من $set لمنع كتابة القيمة الفارغة لاحقاً.
-             if "referred_by" in update_data:
-                del update_data["referred_by"]
-
+    # تخزين 'referred_by' عند الإنشاء فقط
+    if is_new_user and referrer_id and str(referrer_id) != user_id_str and users_collection.find_one({'_id': str(referrer_id)}):
+        set_on_insert_data["referred_by"] = str(referrer_id)
     
     users_collection.update_one(
         {"_id": user_id_str},
@@ -167,7 +121,6 @@ def register_user(user_id, first_name, username, new_purchase=None, update_purch
     
 def get_all_users_keys():
     """جلب آيديات جميع المستخدمين للبث الجماعي"""
-    # نستخدم "_id" لأننا نضبطه ليكون آيدي المستخدم
     return [doc["_id"] for doc in users_collection.find({}, {"_id": 1})]
 
 
@@ -180,24 +133,28 @@ def get_bot_data():
     # 💡 نبحث عن المستند bot_settings
     data_doc = data_collection.find_one({"_id": "bot_settings"})
     
-    # 💡 [التعديل الضروري هنا] - تم توحيد الأسماء لتتوافق مع user_handlers.py
+    # 🚀 القيم الافتراضية الموحدة مع المفتاح الصحيح لخدمات الرشق
     default = {
         '_id': 'bot_settings', 
         'countries': {}, 
         'states': {}, 
         'active_requests': {}, 
-        'smmkings_services': {}, # ⬅️ تم التعديل من 'sh_services'
-        'user_states': {},       # ⬅️ تم التعديل من 'awaiting_sh_order'
+        'smmkings_services': {},   # ⬅️ المفتاح الصحيح الذي يجب أن يستخدمه الجميع
+        'user_states': {},       
         'ready_numbers_stock': {} 
     }
     
-    # 💡 نرجع المستند إذا وجد، أو القيم الافتراضية
-    
     if data_doc:
-        # إذا وُجد المستند، نتأكد من إضافة الحقول الجديدة إذا كانت مفقودة (مرونة إضافية)
+        # إضافة الحقول الافتراضية إذا كانت مفقودة
         for key, value in default.items():
             if key not in data_doc:
                 data_doc[key] = value
+        
+        # 📌 هام: هنا نقوم بتحويل المفتاح القديم (إن وجد) إلى المفتاح الجديد
+        if 'sh_services' in data_doc and not data_doc.get('smmkings_services'):
+            data_doc['smmkings_services'] = data_doc['sh_services']
+            # لا نحذف المفتاح القديم مباشرة هنا لمنع الكتابة غير الضرورية على DB
+            
         return data_doc
     else:
         return default
