@@ -162,7 +162,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             
     # =========================================================================
     # 🚀 [الدالة المصححة: عرض فئات SMM مع ترقيم وفلترة]
-    # **تم التعديل لاستخدام category_id_short كمعرف فريد**
     # =========================================================================
     def show_smm_categories(chat_id, message_id, page=1):
         """
@@ -267,66 +266,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
     # =========================================================================
     # 🚀 [نهاية الدالة المصححة]
     # =========================================================================
-
-    # ... (باقي معالجات الرسائل) ...
-    # --------------------------------------------------------------------------
-    @bot.message_handler(func=lambda message: message.from_user.id != DEVELOPER_ID)
-    def handle_user_messages(message):
-        # ... (نفس محتوى الدالة السابقة) ...
-        chat_id = message.chat.id
-        user_id = message.from_user.id
-        first_name = message.from_user.first_name
-        username = message.from_user.username
-        
-        if message.chat.type != "private":
-            return
-        
-        referrer_id = None
-        if message.text.startswith('/start'):
-            try:
-                payload = message.text.split()[1]
-                if payload.isdigit():
-                    referrer_id = int(payload)
-            except:
-                pass
-        
-        register_user(user_id, first_name, username, referrer_id=referrer_id)
-
-        is_subscribed = True
-        for channel in CHANNELS_LIST:
-            if not check_subscription(bot, user_id, channel):
-                is_subscribed = False
-                break
-
-        if not is_subscribed:
-            markup = get_subscription_markup(CHANNELS_LIST)
-            
-            bot.send_message(chat_id, 
-                             "🛑 **يجب عليك الاشتراك في قنوات البوت الإجبارية لاستخدام الخدمة.**\n\nيرجى الاشتراك في جميع القنوات ثم الضغط على زر **تم الاشتراك**.", 
-                             parse_mode='Markdown', 
-                             reply_markup=markup)
-            return
-
-        if message.text.startswith('/start'):
-             show_main_menu(chat_id)
-             return
-
-        elif message.text in ['/balance', 'رصيدي']:
-            user_doc = get_user_doc(user_id)
-            balance = user_doc.get('balance', 0) if user_doc else 0
-            bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
-            return
-
-        elif message.text in ['/invite', 'رابط الإحالة']:
-            bot.send_message(chat_id, 
-                             f"🔗 *رابط الإحالة الخاص بك:*\n`https://t.me/{bot.get_me().username}?start={user_id}`\n\n"
-                             f"🤑 *عندما يقوم صديقك بالتسجيل عبر هذا الرابط، ستحصل أنت على 0.25 روبل مجاناً.*", 
-                             parse_mode='Markdown')
-            return
-        
-        else:
-            pass
-    # --------------------------------------------------------------------------
 
     # ... (باقي معالجات Callbacks) ...
     @bot.callback_query_handler(func=lambda call: call.from_user.id != DEVELOPER_ID)
@@ -435,7 +374,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smmc_' - عرض الخدمات داخل الفئة من المخزن] (المُعدَّل للآيدي القصير)
+        # 🚀 [معالج 'smmc_' - عرض الخدمات داخل الفئة من المخزن]
         # =========================================================================
         elif data.startswith('smmc_'):
             # 💡 التعديل: استخراج الآيدي القصير مباشرةً من الكولباك داتا
@@ -508,7 +447,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smm_order_' - جلب التفاصيل من المخزن وبدء الطلب] (مصحح لتفادي مشاكل الـ JSON)
+        # 🚀 [معالج 'smm_order_' - جلب التفاصيل من المخزن وبدء الطلب]
         # =========================================================================
         elif data.startswith('smm_order_'):
             service_id = data.split('_')[-1]
@@ -649,8 +588,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 f"♨️ > السعر : *₽ {price}*\n"
                 f"⚠️ > ملاحضة : *{what}*\n"
                 f"🅿️ > رقم المعاملة : *{idnums}*\n\n"
-                f"☑️ *- تم حذف الرقم* من قائمة الأرقام الجاهزة\n"
-                f"🗃 *- تم حفظ الرقم* في سجلك للأرقام 🤙\n"
+                f"☑️ *- تم حذف الرقم* من قائمة الأرقام الجاهزة 🤙\n"
                 f"✅ - تم خصم *₽ {price}* من نقودك *( {remaining_balance} )* 💰\n"
                 f"💸"
             )
@@ -1128,28 +1066,32 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         elif data.startswith('ChangeNumber_'):
             bot.send_message(chat_id, "🔄 *سيتم إضافة وظيفة تغيير الرقم قريباً.*")
             return
-
+            
+    # --------------------------------------------------------------------------
+    # ⚔️ [المعالجات ذات الأولوية العالية: يجب أن تكون في المقدمة]
+    # --------------------------------------------------------------------------
+            
     # 💡 [معالج رسائل: إدخال الرابط لطلب SMM]
-    # 🌟 التعديل المطلوب: تم تغيير message.from_user.id إلى str(message.from_user.id)
     @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(str(message.from_user.id), {}).get('state') == 'awaiting_smm_link')
     def handle_smm_link_input(message):
-        user_id = message.from_user.id
+        # 💥 الإصلاح: تحويل الآيدي إلى نص مباشرة
+        user_id = str(message.from_user.id)
         link = message.text.strip()
         
         bot_data = get_bot_data()
-        # 💥 الإصلاح: استخدام str(user_id) عند القراءة
-        user_state = bot_data['user_states'].get(str(user_id))
+        # 💥 الإصلاح: استخدام user_id كنص
+        user_state = bot_data['user_states'].get(user_id)
         
         if not user_state:
-            bot.send_message(user_id, "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
+            bot.send_message(int(user_id), "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
             return
         
-        # 📌 التعديل الحاسم: حفظ حقل 'user_states' فقط
+        # 📌 الخطوة 1: تخزين الرابط وتغيير الحالة إلى انتظار الكمية
         user_state['link'] = link
         user_state['state'] = 'awaiting_smm_quantity'
         
-        # 💥 الإصلاح: استخدام str(user_id) كمفتاح
-        bot_data['user_states'][str(user_id)] = user_state
+        # 💥 الإصلاح: استخدام user_id كنص
+        bot_data['user_states'][user_id] = user_state
         
         # حفظ المفتاح الذي تم تحديثه فقط
         save_bot_data({'user_states': bot_data['user_states']})
@@ -1161,57 +1103,56 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             f"🔗 **تم حفظ الرابط:** `{link}`\n"
             f"🔢 **الخطوة 2:** يرجى إرسال **الكمية المطلوبة** (أقل كمية هي {min_qty}، والحد الأقصى {max_qty})."
         )
-        bot.send_message(user_id, message_text, parse_mode='Markdown')
+        bot.send_message(int(user_id), message_text, parse_mode='Markdown')
     
-    # 💡 [معالج رسائل: إدخال الكمية لطلب SMM] (مُعدَّل)
-    # 🌟 التعديل المطلوب: تم تغيير message.from_user.id إلى str(message.from_user.id)
+    # 💡 [معالج رسائل: إدخال الكمية لطلب SMM]
     @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(str(message.from_user.id), {}).get('state') == 'awaiting_smm_quantity')
     def handle_smm_quantity_input(message):
-        user_id = message.from_user.id
+        # 💥 الإصلاح: تحويل الآيدي إلى نص مباشرة
+        user_id = str(message.from_user.id)
         
         bot_data = get_bot_data()
-        # 💥 الإصلاح: استخدام str(user_id) عند القراءة
-        user_state = bot_data['user_states'].get(str(user_id))
+        # 💥 الإصلاح: استخدام user_id كنص
+        user_state = bot_data['user_states'].get(user_id)
         
         if not user_state:
-            bot.send_message(user_id, "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
+            bot.send_message(int(user_id), "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
             return
 
         try:
             quantity = int(message.text.strip())
         except ValueError:
-            bot.send_message(user_id, "❌ *الكمية غير صحيحة. يرجى إرسال رقم صحيح.*", parse_mode='Markdown')
+            bot.send_message(int(user_id), "❌ *الكمية غير صحيحة. يرجى إرسال رقم صحيح.*", parse_mode='Markdown')
             return
             
-        # 🆕 التعديل: التأكد أن الكمية موجبة
         if quantity <= 0:
-            bot.send_message(user_id, "❌ *الكمية يجب أن تكون رقماً موجباً.*", parse_mode='Markdown')
+            bot.send_message(int(user_id), "❌ *الكمية يجب أن تكون رقماً موجباً.*", parse_mode='Markdown')
             return
         
         service_id = user_state.get('service_id')
         link = user_state.get('link')
-        rate_per_k = float(user_state.get('rate', 0)) # السعر لكل 1000 وحدة (تم تخزينه مسبقاً)
+        rate_per_k = float(user_state.get('rate', 0)) # السعر لكل 1000 وحدة
         min_qty = int(user_state.get('min', 1))
         max_qty = int(user_state.get('max', 999999999)) 
         service_name = user_state.get('service_name', 'خدمة رشق')
         
         if quantity < min_qty:
-            bot.send_message(user_id, f"❌ *الكمية المدخلة أقل من الحد الأدنى. الحد الأدنى هو {min_qty}.*", parse_mode='Markdown')
+            bot.send_message(int(user_id), f"❌ *الكمية المدخلة أقل من الحد الأدنى. الحد الأدنى هو {min_qty}.*", parse_mode='Markdown')
             return
         
         if quantity > max_qty:
-             bot.send_message(user_id, f"❌ *الكمية المدخلة أكبر من الحد الأقصى. الحد الأقصى هو {max_qty}.*", parse_mode='Markdown')
+             bot.send_message(int(user_id), f"❌ *الكمية المدخلة أكبر من الحد الأقصى. الحد الأقصى هو {max_qty}.*", parse_mode='Markdown')
              return
             
         price = (quantity / 1000) * rate_per_k
-        user_doc = get_user_doc(user_id)
+        user_doc = get_user_doc(int(user_id))
         user_balance = user_doc.get('balance', 0)
         
         if user_balance < price:
-            bot.send_message(user_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية. الرصيد المطلوب: {price:.2f} روبل.*", parse_mode='Markdown')
+            bot.send_message(int(user_id), f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية. الرصيد المطلوب: {price:.2f} روبل.*", parse_mode='Markdown')
             
-            # 💥 الإصلاح: استخدام str(user_id) كمفتاح عند الحذف
-            del bot_data['user_states'][str(user_id)]
+            # 💥 الإصلاح: استخدام user_id كنص عند الحذف
+            del bot_data['user_states'][user_id]
             
             # حفظ حقل 'user_states' فقط
             save_bot_data({'user_states': bot_data['user_states']})
@@ -1224,10 +1165,10 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 order_id = str(order_result.get('order'))
                 remaining_balance = user_balance - price
                 
-                update_user_balance(user_id, -price, is_increment=True)
+                update_user_balance(int(user_id), -price, is_increment=True)
                 
                 register_user(
-                    user_id, 
+                    int(user_id), 
                     user_doc.get('first_name'), 
                     user_doc.get('username'), 
                     new_purchase={
@@ -1251,18 +1192,83 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     f"🅿️ **رقم الطلب:** `{order_id}`\n\n"
                     f"🤖 **رصيدك المتبقي:** `{remaining_balance:.2f}` روبل."
                 )
-                bot.send_message(user_id, message_text, parse_mode='Markdown', reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
+                bot.send_message(int(user_id), message_text, parse_mode='Markdown', reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
 
             else:
-                bot.send_message(user_id, f"❌ **فشل تقديم الطلب:** لم يتمكن البوت من إرسال الطلب إلى SMMKings. لم يتم خصم رصيدك. قد يكون السبب هو خطأ في الرابط أو عدم توفر الخدمة حالياً.", parse_mode='Markdown')
+                bot.send_message(int(user_id), f"❌ **فشل تقديم الطلب:** لم يتمكن البوت من إرسال الطلب إلى SMMKings. لم يتم خصم رصيدك. قد يكون السبب هو خطأ في الرابط أو عدم توفر الخدمة حالياً.", parse_mode='Markdown')
             
         except Exception as e:
             logging.error(f"SMMKings add_order exception: {e}")
-            bot.send_message(user_id, "❌ **فشل حرج:** حدث خطأ غير متوقع أثناء محاولة تقديم الطلب. لم يتم خصم رصيدك. يرجى التواصل مع الدعم.", parse_mode='Markdown')
+            bot.send_message(int(user_id), "❌ **فشل حرج:** حدث خطأ غير متوقع أثناء محاولة تقديم الطلب. لم يتم خصم رصيدك. يرجى التواصل مع الدعم.", parse_mode='Markdown')
 
         # 📌 مسح حالة المستخدم بعد إكمال/فشل الطلب
-        # 💥 الإصلاح: استخدام str(user_id) كمفتاح عند الحذف
-        del bot_data['user_states'][str(user_id)]
+        # 💥 الإصلاح: استخدام user_id كنص عند الحذف
+        del bot_data['user_states'][user_id]
         
         # حفظ حقل 'user_states' فقط
         save_bot_data({'user_states': bot_data['user_states']})
+        
+    # --------------------------------------------------------------------------
+    # 🛑 [المعالج الأقل أولوية: التقاط الرسائل العامة]
+    # --------------------------------------------------------------------------
+
+    # هذا المعالج يلتقط أي رسالة لا يلتقطها أي معالج آخر (مثل /start)
+    @bot.message_handler(func=lambda message: message.from_user.id != DEVELOPER_ID)
+    def handle_user_messages(message):
+        chat_id = message.chat.id
+        user_id = message.from_user.id
+        first_name = message.from_user.first_name
+        username = message.from_user.username
+        
+        if message.chat.type != "private":
+            return
+        
+        referrer_id = None
+        if message.text.startswith('/start'):
+            try:
+                payload = message.text.split()[1]
+                if payload.isdigit():
+                    referrer_id = int(payload)
+            except:
+                pass
+        
+        register_user(user_id, first_name, username, referrer_id=referrer_id)
+
+        is_subscribed = True
+        for channel in CHANNELS_LIST:
+            if not check_subscription(bot, user_id, channel):
+                is_subscribed = False
+                break
+
+        if not is_subscribed:
+            markup = get_subscription_markup(CHANNELS_LIST)
+            
+            bot.send_message(chat_id, 
+                             "🛑 **يجب عليك الاشتراك في قنوات البوت الإجبارية لاستخدام الخدمة.**\n\nيرجى الاشتراك في جميع القنوات ثم الضغط على زر **تم الاشتراك**.", 
+                             parse_mode='Markdown', 
+                             reply_markup=markup)
+            return
+
+        if message.text.startswith('/start'):
+             show_main_menu(chat_id)
+             return
+
+        elif message.text in ['/balance', 'رصيدي']:
+            user_doc = get_user_doc(user_id)
+            balance = user_doc.get('balance', 0) if user_doc else 0
+            bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
+            return
+
+        elif message.text in ['/invite', 'رابط الإحالة']:
+            bot.send_message(chat_id, 
+                             f"🔗 *رابط الإحالة الخاص بك:*\n`https://t.me/{bot.get_me().username}?start={user_id}`\n\n"
+                             f"🤑 *عندما يقوم صديقك بالتسجيل عبر هذا الرابط، ستحصل أنت على 0.25 روبل مجاناً.*", 
+                             parse_mode='Markdown')
+            return
+        
+        else:
+            # رسالة افتراضية لأي رسالة أخرى
+            bot.send_message(chat_id, "⚠️ **رسالة غير مفهومة.** يمكنك استخدام الأمر `/start` للعودة إلى القائمة الرئيسية أو استخدام الأزرار المتاحة.", parse_mode='Markdown')
+
+    # --------------------------------------------------------------------------
+
