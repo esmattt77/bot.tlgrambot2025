@@ -1130,6 +1130,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
     # 💡 [معالج رسائل: إدخال الرابط لطلب SMM]
+    # 🌟 التعديل المطلوب: تم تغيير message.from_user.id إلى str(message.from_user.id)
     @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(str(message.from_user.id), {}).get('state') == 'awaiting_smm_link')
     def handle_smm_link_input(message):
         user_id = message.from_user.id
@@ -1163,6 +1164,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         bot.send_message(user_id, message_text, parse_mode='Markdown')
     
     # 💡 [معالج رسائل: إدخال الكمية لطلب SMM] (مُعدَّل)
+    # 🌟 التعديل المطلوب: تم تغيير message.from_user.id إلى str(message.from_user.id)
     @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(str(message.from_user.id), {}).get('state') == 'awaiting_smm_quantity')
     def handle_smm_quantity_input(message):
         user_id = message.from_user.id
