@@ -508,7 +508,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         # =========================================================================
-        # 🚀 [معالج 'smm_order_' - جلب التفاصيل من المخزن وبدء الطلب] (مصحح)
+        # 🚀 [معالج 'smm_order_' - جلب التفاصيل من المخزن وبدء الطلب] (مصحح لتفادي مشاكل الـ JSON)
         # =========================================================================
         elif data.startswith('smm_order_'):
             service_id = data.split('_')[-1]
@@ -533,7 +533,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             except (ValueError, TypeError):
                 user_price = 0
 
-            bot_data['user_states'][user_id] = {
+            # 📌 تحديد حالة المستخدم للمتابعة (State Management)
+            # 💥 الإصلاح: استخدام str(user_id) كمفتاح
+            bot_data['user_states'][str(user_id)] = {
                 'state': 'awaiting_smm_link',
                 'service_id': service_id,
                 'service_name': name,
@@ -1127,14 +1129,15 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot.send_message(chat_id, "🔄 *سيتم إضافة وظيفة تغيير الرقم قريباً.*")
             return
 
-        # 💡 [معالج رسائل: إدخال الرابط لطلب SMM]
-    @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(message.from_user.id, {}).get('state') == 'awaiting_smm_link')
+    # 💡 [معالج رسائل: إدخال الرابط لطلب SMM]
+    @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(str(message.from_user.id), {}).get('state') == 'awaiting_smm_link')
     def handle_smm_link_input(message):
         user_id = message.from_user.id
         link = message.text.strip()
         
         bot_data = get_bot_data()
-        user_state = bot_data['user_states'].get(user_id)
+        # 💥 الإصلاح: استخدام str(user_id) عند القراءة
+        user_state = bot_data['user_states'].get(str(user_id))
         
         if not user_state:
             bot.send_message(user_id, "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
@@ -1143,7 +1146,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         # 📌 التعديل الحاسم: حفظ حقل 'user_states' فقط
         user_state['link'] = link
         user_state['state'] = 'awaiting_smm_quantity'
-        bot_data['user_states'][user_id] = user_state
+        
+        # 💥 الإصلاح: استخدام str(user_id) كمفتاح
+        bot_data['user_states'][str(user_id)] = user_state
         
         # حفظ المفتاح الذي تم تحديثه فقط
         save_bot_data({'user_states': bot_data['user_states']})
@@ -1158,12 +1163,13 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         bot.send_message(user_id, message_text, parse_mode='Markdown')
     
     # 💡 [معالج رسائل: إدخال الكمية لطلب SMM] (مُعدَّل)
-    @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(message.from_user.id, {}).get('state') == 'awaiting_smm_quantity')
+    @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(str(message.from_user.id), {}).get('state') == 'awaiting_smm_quantity')
     def handle_smm_quantity_input(message):
         user_id = message.from_user.id
         
         bot_data = get_bot_data()
-        user_state = bot_data['user_states'].get(user_id)
+        # 💥 الإصلاح: استخدام str(user_id) عند القراءة
+        user_state = bot_data['user_states'].get(str(user_id))
         
         if not user_state:
             bot.send_message(user_id, "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
@@ -1201,7 +1207,10 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         
         if user_balance < price:
             bot.send_message(user_id, f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية. الرصيد المطلوب: {price:.2f} روبل.*", parse_mode='Markdown')
-            del bot_data['user_states'][user_id]
+            
+            # 💥 الإصلاح: استخدام str(user_id) كمفتاح عند الحذف
+            del bot_data['user_states'][str(user_id)]
+            
             # حفظ حقل 'user_states' فقط
             save_bot_data({'user_states': bot_data['user_states']})
             return
@@ -1250,6 +1259,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot.send_message(user_id, "❌ **فشل حرج:** حدث خطأ غير متوقع أثناء محاولة تقديم الطلب. لم يتم خصم رصيدك. يرجى التواصل مع الدعم.", parse_mode='Markdown')
 
         # 📌 مسح حالة المستخدم بعد إكمال/فشل الطلب
-        del bot_data['user_states'][user_id]
+        # 💥 الإصلاح: استخدام str(user_id) كمفتاح عند الحذف
+        del bot_data['user_states'][str(user_id)]
+        
         # حفظ حقل 'user_states' فقط
         save_bot_data({'user_states': bot_data['user_states']})
