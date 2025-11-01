@@ -32,27 +32,19 @@ from db_manager import (
 )
 
 # =========================================================================
-# 💡 [دالة تنسيق رسالة الإشعار للقناة]
+# 💡 [دوال مساعدة]
 # =========================================================================
 def format_success_message(order_id, country_name, country_flag, user_id, price, phone_number, code, service_name, activation_type="يدوي"):
     """
     تقوم ببناء رسالة إشعار النجاح بالتنسيق المطلوب.
     """
-    
-    # إعداد التوقيت المحلي
     tz = pytz.timezone('Asia/Aden') 
     now = datetime.now(tz)
-    
     date_time_str = now.strftime("%A %d %B %Y | %I:%M:%S %p")
-    
-    # إخفاء آخر 3 أرقام من معرف العميل وآخر 4 من رقم الهاتف
     user_id_str = str(user_id)
     masked_user_id = user_id_str[:-3] + "•••"
-    
-    # التعامل مع رقم الهاتف الذي قد يكون None في حال كان طلب SMM
     masked_phone_number = (phone_number[:-4] + "••••") if phone_number and len(phone_number) > 4 else (phone_number if phone_number else 'N/A')
 
-    # بناء نص الرسالة باستخدام F-string
     message = (
         f"➖ تم شراء رقم من البوت بنجاح 📢\n"
         f"➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖\n"
@@ -70,204 +62,400 @@ def format_success_message(order_id, country_name, country_flag, user_id, price,
         f"➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖\n"
         f"📆 {date_time_str}"
     )
-    
     return message
+
+def check_subscription(bot, user_id, channel_id):
+    try:
+        member = bot.get_chat_member(channel_id, user_id)
+        if member.status in ['member', 'administrator', 'creator']:
+            return True
+        return False
+    except Exception as e:
+        logging.error(f"Error checking subscription for {user_id} in {channel_id}: {e}")
+        return False
+        
+def get_subscription_markup(channels_list):
+    markup = types.InlineKeyboardMarkup()
+    for channel in channels_list:
+        channel_link_name = channel.replace('@', '') 
+        markup.add(types.InlineKeyboardButton(f"اشترك في {channel}", url=f"https://t.me/{channel_link_name}"))
+    markup.add(types.InlineKeyboardButton("✅ تم الاشتراك، تحقق الآن", callback_data='check_sub_and_continue'))
+    return markup
+    
+def get_cancellable_request_info(user_doc, request_id):
+    purchases = user_doc.get('purchases', [])
+    request_id_str = str(request_id) 
+    try:
+        request_id_int = int(request_id_str) 
+    except ValueError:
+        request_id_int = None 
+    
+    for p in purchases:
+        p_request_id = p.get('request_id')
+
+        is_match = (str(p_request_id) == request_id_str) or \
+                   (request_id_int is not None and str(p_request_id) == str(request_id_int))
+        
+        if is_match and p.get('status') not in ['completed', 'cancelled', 'ready_number_purchased', 'smm_completed', 'smm_cancelled']: 
+            return {
+                'user_id': user_doc.get('_id'),
+                'price_to_restore': p.get('price', 0),
+                'request_id_in_db': p_request_id, 
+                'service': p.get('service'),
+                'app_name': p.get('app_name'),
+                'phone_number': p.get('phone_number')
+            }
+    return None
+
+def show_main_menu(bot, chat_id, message_id=None, EESSMT='EESSMT'):
+    markup = types.InlineKeyboardMarkup()
+    markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
+    markup.row(types.InlineKeyboardButton('💰︙شحن رصيدك', callback_data='Payment'), types.InlineKeyboardButton('👤︙قسم الرشق', callback_data='smm_services')) 
+    markup.row(types.InlineKeyboardButton('🅿️︙كشف الحساب', callback_data='Record'), types.InlineKeyboardButton('🛍︙قسم العروض', callback_data='Wo'))
+    markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
+    markup.row(types.InlineKeyboardButton('🔗︙رابط الإحالة (0.25 ₽)', callback_data='invite_link')) 
+    markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
+    markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
+    markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
+    
+    text = f"مرحباً بك في *بوت الأسطورة لخدمات الأرقام الافتراضية*.\n\n☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*"
+    
+    if message_id:
+        try:
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, parse_mode='Markdown', reply_markup=markup)
+        except telebot.apihelper.ApiTelegramException as e:
+            if "message is not modified" not in str(e):
+                bot.send_message(chat_id, text, parse_mode='Markdown', reply_markup=markup)
+    else:
+        bot.send_message(chat_id, text, parse_mode='Markdown', reply_markup=markup)
+
 # =========================================================================
-# 💡 [نهاية دالة تنسيق رسالة الإشعار]
+# 💡 [دالة عرض فئات SMM مع ترقيم وفلترة]
 # =========================================================================
+def show_smm_categories(bot, chat_id, message_id, page=1):
+    """
+    تجلب خدمات الرشق المخزنة محلياً، وتجمعها حسب 'category_id_short' مع ترقيم الصفحات، 
+    وفلترة الخدمات التي لم يقم المشرف بتسعيرها (user_price > 0).
+    """
+    
+    bot_data = get_bot_data()
+    services = bot_data.get('smmkings_services', {})
+    categories_dict = defaultdict(list)
+    category_map = {} 
+    
+    for service_id, info in services.items():
+        category_name = info.get('category_name') 
+        category_id_short = info.get('category_id_short') 
+        user_price = info.get('user_price', 0) 
+        min_qty = info.get('min', 0)
+        
+        try:
+            user_price = float(user_price)
+        except (ValueError, TypeError):
+            user_price = 0
+        
+        if category_name and user_price > 0 and min_qty > 0 and category_id_short:
+            categories_dict[category_id_short].append(service_id)
+            category_map[category_id_short] = category_name 
+            
+    if not categories_dict:
+        message = "❌ لا توجد فئات الخدمات الرشق متاحة حالياً. يرجى من المشرف جلب وتحديث الخدمات وتحديد أسعارها."
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
+        try:
+            if message_id:
+                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
+            else:
+                bot.send_message(chat_id, message, parse_mode='Markdown', reply_markup=markup)
+        except telebot.apihelper.ApiTelegramException as e:
+            if "message is not modified" not in str(e):
+                bot.send_message(chat_id, message, parse_mode='Markdown', reply_markup=markup)
+        except Exception:
+             bot.send_message(chat_id, message, parse_mode='Markdown', reply_markup=markup)
+        return
+
+    items_per_page = 10
+    sorted_category_ids = sorted(categories_dict.keys()) 
+    total_categories = len(sorted_category_ids)
+    total_pages = (total_categories + items_per_page - 1) // items_per_page
+    
+    start_index = (page - 1) * items_per_page
+    end_index = start_index + items_per_page
+    current_page_ids = sorted_category_ids[start_index:end_index] 
+
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    
+    for category_id_short in current_page_ids: 
+        category_name = category_map[category_id_short] 
+        callback_data = f'smmc_{category_id_short}' 
+        
+        markup.add(types.InlineKeyboardButton(
+            f"🚀 {category_name} ({len(categories_dict[category_id_short])})", 
+            callback_data=callback_data 
+        ))
+        
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(types.InlineKeyboardButton('◀️ السابق', callback_data=f'smm_page_{page - 1}'))
+    if page < total_pages:
+        nav_buttons.append(types.InlineKeyboardButton('التالي ▶️', callback_data=f'smm_page_{page + 1}'))
+    
+    if nav_buttons:
+        markup.row(*nav_buttons)
+
+    markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
+
+    message_text = f"🚀 *اختر فئة الخدمة التي ترغب بطلبها:* (صفحة {page} من {total_pages})"
+    
+    try:
+        if message_id:
+            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown', reply_markup=markup)
+        else:
+             bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
+    except telebot.apihelper.ApiTelegramException as e:
+        if "message is not modified" not in str(e):
+            bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
+    
+    return
+
+# =========================================================================
+# 💡 [نهاية الدوال المساعدة]
+# =========================================================================
+
 
 def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman_api, tiger_sms_client):
     
-    # دالة مساعدة للوصول إلى مخزون الأرقام الجاهزة
     def get_ready_numbers_stock():
         return get_bot_data().get('ready_numbers_stock', {})
 
-    # 💡 [دالة مساعدة مرنة للبحث عن الطلب في سجل المشتريات]
-    def get_cancellable_request_info(user_doc, request_id):
-        purchases = user_doc.get('purchases', [])
-        request_id_str = str(request_id) 
+    # --------------------------------------------------------------------------
+    # 🥇 [المعالج ذو الأولوية القصوى: /start] - تم فصله لضمان التنظيف
+    # --------------------------------------------------------------------------
+    @bot.message_handler(commands=['start'])
+    def handle_start(message):
+        chat_id = message.chat.id
+        user_id = str(message.from_user.id)
+        first_name = message.from_user.first_name
+        username = message.from_user.username
         
-        try:
-            request_id_int = int(request_id_str) 
-        except ValueError:
-            request_id_int = None 
-        
-        for p in purchases:
-            p_request_id = p.get('request_id')
-
-            is_match = False
-            # 1. محاولة المطابقة كسلسلة نصية
-            if str(p_request_id) == request_id_str:
-                is_match = True
-            # 2. محاولة المطابقة كرقم صحيح (في حال تم تخزينه كرقم في الماضي)
-            elif request_id_int is not None and str(p_request_id) == str(request_id_int):
-                is_match = True
-            
-            # حالة الطلب لا يجب أن تكون مكتملة أو ملغاة مسبقاً (تشمل SMM أيضاً)
-            if is_match and p.get('status') not in ['completed', 'cancelled', 'ready_number_purchased', 'smm_completed', 'smm_cancelled']: 
-                
-                # وجدنا الطلب، نُعيد معلوماته لاسترجاع الرصيد
-                return {
-                    'user_id': user_doc.get('_id'),
-                    'price_to_restore': p.get('price', 0),
-                    'request_id_in_db': p_request_id, # نُعيد المعرف كما هو مخزن
-                    'service': p.get('service'),
-                    'app_name': p.get('app_name'),
-                    'phone_number': p.get('phone_number')
-                }
-        return None
-
-    # 💡 [دالة مساعدة للتحقق من اشتراك المستخدم في القنوات]
-    def check_subscription(bot, user_id, channel_id):
-        try:
-            member = bot.get_chat_member(channel_id, user_id)
-            if member.status in ['member', 'administrator', 'creator']:
-                return True
-            return False
-        except Exception as e:
-            logging.error(f"Error checking subscription for {user_id} in {channel_id}: {e}")
-            return False
-            
-    # 💡 [دالة مساعدة لإنشاء أزرار الاشتراك]
-    def get_subscription_markup(channels_list):
-        markup = types.InlineKeyboardMarkup()
-        for channel in channels_list:
-            channel_link_name = channel.replace('@', '') 
-            markup.add(types.InlineKeyboardButton(f"اشترك في {channel}", url=f"https://t.me/{channel_link_name}"))
-        markup.add(types.InlineKeyboardButton("✅ تم الاشتراك، تحقق الآن", callback_data='check_sub_and_continue'))
-        return markup
-        
-    # 💡 [دالة show_main_menu]
-    def show_main_menu(chat_id, message_id=None):
-        markup = types.InlineKeyboardMarkup()
-        markup.row(types.InlineKeyboardButton('☎️︙شراء ارقـام وهمية', callback_data='Buynum'))
-        markup.row(types.InlineKeyboardButton('💰︙شحن رصيدك', callback_data='Payment'), types.InlineKeyboardButton('👤︙قسم الرشق', callback_data='smm_services')) 
-        markup.row(types.InlineKeyboardButton('🅿️︙كشف الحساب', callback_data='Record'), types.InlineKeyboardButton('🛍︙قسم العروض', callback_data='Wo'))
-        markup.row(types.InlineKeyboardButton('☑️︙قسم العشوائي', callback_data='worldwide'), types.InlineKeyboardButton('👑︙قسم الملكي', callback_data='saavmotamy'))
-        markup.row(types.InlineKeyboardButton('🔗︙رابط الإحالة (0.25 ₽)', callback_data='invite_link')) 
-        markup.row(types.InlineKeyboardButton('💳︙متجر الكروت', callback_data='readycard-10'), types.InlineKeyboardButton('🔰︙الارقام الجاهزة', callback_data='ready'))
-        markup.row(types.InlineKeyboardButton('👨‍💻︙قسم الوكلاء', callback_data='gents'), types.InlineKeyboardButton('⚙️︙إعدادات البوت', callback_data='MyAccount'))
-        markup.row(types.InlineKeyboardButton('📮︙تواصل الدعم أونلاين', callback_data='super'))
-        
-        text = f"مرحباً بك في *بوت الأسطورة لخدمات الأرقام الافتراضية*.\n\n☑️ *⁞ قناة البوت الرسمية: @{EESSMT}\n🎬︙قم بالتحكم بالبوت الأن عبر الضعط على الأزرار.*"
-        
-        if message_id:
-            try:
-                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, parse_mode='Markdown', reply_markup=markup)
-            except telebot.apihelper.ApiTelegramException as e:
-                if "message is not modified" not in str(e):
-                    bot.send_message(chat_id, text, parse_mode='Markdown', reply_markup=markup)
-        else:
-            bot.send_message(chat_id, text, parse_mode='Markdown', reply_markup=markup)
-            
-    # =========================================================================
-    # 🚀 [الدالة المصححة: عرض فئات SMM مع ترقيم وفلترة]
-    # =========================================================================
-    def show_smm_categories(chat_id, message_id, page=1):
-        """
-        تجلب خدمات الرشق المخزنة محلياً، وتجمعها حسب 'category_id_short' مع ترقيم الصفحات، 
-        وفلترة الخدمات التي لم يقم المشرف بتسعيرها (user_price > 0).
-        """
-        
-        # 1. جلب البيانات والتجميع
+        # 📌 الخطوة 1: تنظيف حالة المستخدم المعلقة (إذا وجدت)
         bot_data = get_bot_data()
-        services = bot_data.get('smmkings_services', {})
-        
-        # 💥 التعديل هنا: التجميع حسب الآيدي القصير (category_id_short) 
-        categories_dict = defaultdict(list)
-        
-        # قائمة لتخزين أزواج (الآيدي القصير، الاسم المترجم)
-        category_map = {} 
-        
-        for service_id, info in services.items():
-            category_name = info.get('category_name') 
-            # 📌 يجب أن يتوفر هذا المفتاح بعد تحديث ملف admin_handlers.py
-            category_id_short = info.get('category_id_short') 
-            user_price = info.get('user_price', 0) 
-            min_qty = info.get('min', 0)
+        if user_id in bot_data.get('user_states', {}):
+            del bot_data['user_states'][user_id]
+            # حفظ المفتاح الذي تم تحديثه فقط
+            save_bot_data({'user_states': bot_data['user_states']})
             
-            try:
-                user_price = float(user_price)
-            except (ValueError, TypeError):
-                user_price = 0
+        # 📌 الخطوة 2: تسجيل المستخدم والتحقق من الإحالة
+        referrer_id = None
+        try:
+            payload = message.text.split()[1]
+            if payload.isdigit():
+                referrer_id = int(payload)
+        except:
+            pass
             
-            # 📌 التعديل الحاسم: التجميع بالآيدي القصير
-            # شرط العرض: يجب أن يكون السعر للمستخدم أكبر من صفر والحد الأدنى للكمية أكبر من صفر ويجب وجود الآيدي القصير
-            if category_name and user_price > 0 and min_qty > 0 and category_id_short:
-                categories_dict[category_id_short].append(service_id)
-                category_map[category_id_short] = category_name # نستخدم الآيدي لتخزين الاسم
-                
-        # 2. التحقق من وجود فئات
-        if not categories_dict:
-            message = "❌ لا توجد فئات الخدمات الرشق متاحة حالياً. يرجى من المشرف جلب وتحديث الخدمات وتحديد أسعارها."
-            markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
-            try:
-                if message_id:
-                    bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
-                else:
-                    bot.send_message(chat_id, message, parse_mode='Markdown', reply_markup=markup)
-            except telebot.apihelper.ApiTelegramException as e:
-                if "message is not modified" not in str(e):
-                    bot.send_message(chat_id, message, parse_mode='Markdown', reply_markup=markup)
-            except Exception:
-                 bot.send_message(chat_id, message, parse_mode='Markdown', reply_markup=markup)
+        register_user(int(user_id), first_name, username, referrer_id=referrer_id)
+
+        # 📌 الخطوة 3: التحقق من الاشتراك الإجباري
+        is_subscribed = True
+        for channel in CHANNELS_LIST:
+            # نستخدم int(user_id) لأن check_subscription تتوقع رقم
+            if not check_subscription(bot, int(user_id), channel):
+                is_subscribed = False
+                break
+
+        if not is_subscribed:
+            markup = get_subscription_markup(CHANNELS_LIST)
+            bot.send_message(chat_id, 
+                             "🛑 **يجب عليك الاشتراك في قنوات البوت الإجبارية لاستخدام الخدمة.**\n\nيرجى الاشتراك في جميع القنوات ثم الضغط على زر **تم الاشتراك**.", 
+                             parse_mode='Markdown', 
+                             reply_markup=markup)
             return
 
-        # 3. تطبيق الترقيم (Pagination)
-        items_per_page = 10
-        # 📌 فرز الفئات الآن يكون حسب الآيدي القصير (المفاتيح)
-        sorted_category_ids = sorted(categories_dict.keys()) 
-        total_categories = len(sorted_category_ids)
-        total_pages = (total_categories + items_per_page - 1) // items_per_page
-        
-        start_index = (page - 1) * items_per_page
-        end_index = start_index + items_per_page
-        current_page_ids = sorted_category_ids[start_index:end_index] # استبدلنا Names بـ IDs
-
-        # 4. إنشاء أزرار الفئات للصفحة الحالية
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        
-        for category_id_short in current_page_ids: # نمر على الآيديات القصيرة
-            category_name = category_map[category_id_short] # نستخدم الآيدي لاسترجاع الاسم الطويل للعرض
+        # 📌 الخطوة 4: عرض القائمة الرئيسية
+        show_main_menu(bot, chat_id, EESSMT=EESSMT)
+    
+    # --------------------------------------------------------------------------
+    # 🥈 [المعالجات ذات الأولوية العالية: معالجات الحالة]
+    # --------------------------------------------------------------------------
             
-            # 💥 الحل الجذري: استخدام الآيدي القصير في الـ callback_data
-            callback_data = f'smmc_{category_id_short}' # هذا قصير جداً (مثلاً: smmc_Instagram)
-            
-            markup.add(types.InlineKeyboardButton(
-                f"🚀 {category_name} ({len(categories_dict[category_id_short])})", # العرض بالاسم الطويل
-                callback_data=callback_data # الكولباك بالآيدي القصير
-            ))
-            
-        # 5. أزرار التنقل بين الصفحات
-        nav_buttons = []
-        if page > 1:
-            nav_buttons.append(types.InlineKeyboardButton('◀️ السابق', callback_data=f'smm_page_{page - 1}'))
-        if page < total_pages:
-            nav_buttons.append(types.InlineKeyboardButton('التالي ▶️', callback_data=f'smm_page_{page + 1}'))
+    # 💡 [معالج رسائل: إدخال الرابط لطلب SMM]
+    @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(str(message.from_user.id), {}).get('state') == 'awaiting_smm_link')
+    def handle_smm_link_input(message):
+        user_id = str(message.from_user.id)
+        link = message.text.strip()
         
-        if nav_buttons:
-            markup.row(*nav_buttons)
+        # 🛑 يجب أن يتأكد هذا المعالج من أن الرسالة ليست أمر /start تم إرساله حديثاً
+        if link.startswith('/start'):
+            # الرسالة كانت أمراً، لكن معالج /start لم يعمل لسبب ما (أو تم إرساله بعد بدء عملية الرشق).
+            # نتجاهل الرسالة هنا ونعتمد على أن الأمر تم معالجته بالفعل (أو يجب تنبيه المستخدم).
+            bot.send_message(int(user_id), "❌ تم إلغاء عملية الطلب الحالية. يرجى استخدام الأمر `/start` مرة أخرى للبدء من القائمة الرئيسية.", parse_mode='Markdown')
+            
+            # تنظيف الحالة هنا احتياطياً
+            bot_data = get_bot_data()
+            if user_id in bot_data.get('user_states', {}):
+                del bot_data['user_states'][user_id]
+                save_bot_data({'user_states': bot_data['user_states']})
+            return
 
-        markup.add(types.InlineKeyboardButton('🔙 - رجوع', callback_data='back'))
 
-        message_text = f"🚀 *اختر فئة الخدمة التي ترغب بطلبها:* (صفحة {page} من {total_pages})"
+        bot_data = get_bot_data()
+        user_state = bot_data['user_states'].get(user_id)
         
+        if not user_state:
+            bot.send_message(int(user_id), "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
+            return
+        
+        user_state['link'] = link
+        user_state['state'] = 'awaiting_smm_quantity'
+        
+        bot_data['user_states'][user_id] = user_state
+        
+        save_bot_data({'user_states': bot_data['user_states']})
+        
+        min_qty = user_state.get('min', '1')
+        max_qty = user_state.get('max', 'غير محدود')
+        
+        message_text = (
+            f"🔗 **تم حفظ الرابط:** `{link}`\n"
+            f"🔢 **الخطوة 2:** يرجى إرسال **الكمية المطلوبة** (أقل كمية هي {min_qty}، والحد الأقصى {max_qty})."
+        )
+        bot.send_message(int(user_id), message_text, parse_mode='Markdown')
+    
+    # 💡 [معالج رسائل: إدخال الكمية لطلب SMM]
+    @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(str(message.from_user.id), {}).get('state') == 'awaiting_smm_quantity')
+    def handle_smm_quantity_input(message):
+        user_id = str(message.from_user.id)
+        
+        bot_data = get_bot_data()
+        user_state = bot_data['user_states'].get(user_id)
+        
+        if not user_state:
+            bot.send_message(int(user_id), "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
+            return
+
         try:
-            if message_id:
-                bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown', reply_markup=markup)
-            else:
-                 bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
-        except telebot.apihelper.ApiTelegramException as e:
-            if "message is not modified" not in str(e):
-                bot.send_message(chat_id, message_text, parse_mode='Markdown', reply_markup=markup)
+            quantity = int(message.text.strip())
+        except ValueError:
+            bot.send_message(int(user_id), "❌ *الكمية غير صحيحة. يرجى إرسال رقم صحيح.*", parse_mode='Markdown')
+            return
+            
+        if quantity <= 0:
+            bot.send_message(int(user_id), "❌ *الكمية يجب أن تكون رقماً موجباً.*", parse_mode='Markdown')
+            return
         
-        return
-    # =========================================================================
-    # 🚀 [نهاية الدالة المصححة]
-    # =========================================================================
+        service_id = user_state.get('service_id')
+        link = user_state.get('link')
+        rate_per_k = float(user_state.get('rate', 0)) 
+        min_qty = int(user_state.get('min', 1))
+        max_qty = int(user_state.get('max', 999999999)) 
+        service_name = user_state.get('service_name', 'خدمة رشق')
+        
+        if quantity < min_qty:
+            bot.send_message(int(user_id), f"❌ *الكمية المدخلة أقل من الحد الأدنى. الحد الأدنى هو {min_qty}.*", parse_mode='Markdown')
+            return
+        
+        if quantity > max_qty:
+             bot.send_message(int(user_id), f"❌ *الكمية المدخلة أكبر من الحد الأقصى. الحد الأقصى هو {max_qty}.*", parse_mode='Markdown')
+             return
+            
+        price = (quantity / 1000) * rate_per_k
+        user_doc = get_user_doc(int(user_id))
+        user_balance = user_doc.get('balance', 0)
+        
+        if user_balance < price:
+            bot.send_message(int(user_id), f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية. الرصيد المطلوب: {price:.2f} روبل.*", parse_mode='Markdown')
+            
+            del bot_data['user_states'][user_id]
+            save_bot_data({'user_states': bot_data['user_states']})
+            return
 
-    # ... (باقي معالجات Callbacks) ...
+        try:
+            order_result = smm_kings_api.add_order(service_id, link, quantity)
+            
+            if order_result and 'order' in order_result:
+                order_id = str(order_result.get('order'))
+                remaining_balance = user_balance - price
+                
+                update_user_balance(int(user_id), -price, is_increment=True)
+                
+                register_user(
+                    int(user_id), 
+                    user_doc.get('first_name'), 
+                    user_doc.get('username'), 
+                    new_purchase={
+                        'request_id': order_id, 
+                        'link': link,
+                        'service': 'smmkings',
+                        'service_name': service_name,
+                        'price': price,
+                        'quantity': quantity,
+                        'status': 'smm_pending',
+                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+                    }
+                )
+                
+                message_text = (
+                    f"✅ **تم تقديم طلب الرشق بنجاح!**\n"
+                    f"🔥 **الخدمة:** `{service_name}`\n"
+                    f"🔗 **الرابط:** `{link}`\n"
+                    f"🔢 **الكمية:** `{quantity}`\n"
+                    f"💸 **السعر:** `{price:.2f}` روبل\n"
+                    f"🅿️ **رقم الطلب:** `{order_id}`\n\n"
+                    f"🤖 **رصيدك المتبقي:** `{remaining_balance:.2f}` روبل."
+                )
+                bot.send_message(int(user_id), message_text, parse_mode='Markdown', reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
+
+            else:
+                bot.send_message(int(user_id), f"❌ **فشل تقديم الطلب:** لم يتمكن البوت من إرسال الطلب إلى SMMKings. لم يتم خصم رصيدك. قد يكون السبب هو خطأ في الرابط أو عدم توفر الخدمة حالياً.", parse_mode='Markdown')
+            
+        except Exception as e:
+            logging.error(f"SMMKings add_order exception: {e}")
+            bot.send_message(int(user_id), "❌ **فشل حرج:** حدث خطأ غير متوقع أثناء محاولة تقديم الطلب. لم يتم خصم رصيدك. يرجى التواصل مع الدعم.", parse_mode='Markdown')
+
+        del bot_data['user_states'][user_id]
+        save_bot_data({'user_states': bot_data['user_states']})
+        
+    # --------------------------------------------------------------------------
+    # 🛑 [المعالج الأقل أولوية: التقاط الرسائل العامة]
+    # --------------------------------------------------------------------------
+
+    # هذا المعالج يلتقط أي رسالة لا يلتقطها أي معالج آخر (الأوامر الأخرى، الرسائل النصية)
+    @bot.message_handler(func=lambda message: message.from_user.id != DEVELOPER_ID, content_types=['text'])
+    def handle_user_messages(message):
+        chat_id = message.chat.id
+        user_id = message.from_user.id
+        
+        if message.chat.type != "private":
+            return
+
+        if message.text.startswith('/start'):
+            # هذا الأمر لن يتم الوصول إليه أبداً إذا كان معالج commands=['start'] يعمل بشكل صحيح
+            # لكنه يعمل كاحتياطي لتنظيف الحالة في حال إرسال /start في منتصف عملية ما.
+            bot.send_message(chat_id, "⚠️ **تنبيه:** يرجى استخدام أمر `/start` مرة أخرى لبدء القائمة الرئيسية.", parse_mode='Markdown')
+            return
+
+        elif message.text in ['/balance', 'رصيدي']:
+            user_doc = get_user_doc(user_id)
+            balance = user_doc.get('balance', 0) if user_doc else 0
+            bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
+            return
+
+        elif message.text in ['/invite', 'رابط الإحالة']:
+            bot.send_message(chat_id, 
+                             f"🔗 *رابط الإحالة الخاص بك:*\n`https://t.me/{bot.get_me().username}?start={user_id}`\n\n"
+                             f"🤑 *عندما يقوم صديقك بالتسجيل عبر هذا الرابط، ستحصل أنت على 0.25 روبل مجاناً.*", 
+                             parse_mode='Markdown')
+            return
+        
+        else:
+            # رسالة افتراضية لأي رسالة أخرى
+            bot.send_message(chat_id, "⚠️ **رسالة غير مفهومة.** يمكنك استخدام الأمر `/start` للعودة إلى القائمة الرئيسية أو استخدام الأزرار المتاحة.", parse_mode='Markdown')
+
+
+    # --------------------------------------------------------------------------
+    # 📌 [باقي معالجات الـ Callbacks] - لم يتم تغييرها جذرياً في هذا التعديل
+    # --------------------------------------------------------------------------
     @bot.callback_query_handler(func=lambda call: call.from_user.id != DEVELOPER_ID)
     def handle_user_callbacks(call):
         chat_id = call.message.chat.id
@@ -306,7 +494,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         # 2. معالج زر "تم الاشتراك، تحقق الآن"
         if data == 'check_sub_and_continue':
             bot.answer_callback_query(call.id, "✅ تم التحقق بنجاح! شكراً لاشتراكك.")
-            show_main_menu(chat_id, message_id)
+            show_main_menu(bot, chat_id, message_id, EESSMT=EESSMT)
             return
 
         # 3. معالج زر رابط الإحالة في القائمة الرئيسية
@@ -322,11 +510,10 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
             
         elif data == 'back':
-            show_main_menu(chat_id, message_id)
+            show_main_menu(bot, chat_id, message_id, EESSMT=EESSMT)
             return
         
         elif data == 'Payment':
-            # 💡 [طرق شحن جديدة]
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('💳 كريمي كول', callback_data='pay_karemi'))
             markup.row(types.InlineKeyboardButton('📱 محفظة جوالي', callback_data='pay_jawali'))
@@ -357,51 +544,33 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot.send_message(chat_id, message_text, parse_mode='Markdown')
             return
 
-        # =========================================================================
-        # 🚀 [معالج 'smm_services' - استدعاء الدالة المنفصلة بالصفحة الأولى]
-        # =========================================================================
         elif data == 'smm_services': 
-            show_smm_categories(chat_id, message_id, page=1) 
+            show_smm_categories(bot, chat_id, message_id, page=1) 
             return
 
-        # 🆕 [معالج التنقل بين صفحات الفئات]
         elif data.startswith('smm_page_'):
             try:
                 page = int(data.split('_')[-1])
-                show_smm_categories(chat_id, message_id, page=page)
+                show_smm_categories(bot, chat_id, message_id, page=page)
             except ValueError:
                 bot.answer_callback_query(call.id, "❌ خطأ في رقم الصفحة.")
             return
 
-        # =========================================================================
-        # 🚀 [معالج 'smmc_' - عرض الخدمات داخل الفئة من المخزن]
-        # =========================================================================
         elif data.startswith('smmc_'):
-            # 💡 التعديل: استخراج الآيدي القصير مباشرةً من الكولباك داتا
             category_id_short = data.replace('smmc_', '', 1) 
-            
             markup = types.InlineKeyboardMarkup()
-            
             bot_data = get_bot_data()
             all_smm_services = bot_data.get('smmkings_services', {})
-
-            # 1. فلترة الخدمات حسب الفئة
             services_in_category = {}
-            # نحتاج الاسم للعرض فقط في النهاية، يمكننا البحث عنه الآن 
             category_name_for_display = "فئة غير معروفة" 
             
             for s_id, s_info in all_smm_services.items():
-                
-                # 💥 التعديل: المقارنة بالآيدي القصير المخزن
                 stored_category_id_short = s_info.get('category_id_short')
                 
                 if stored_category_id_short == category_id_short: 
-                    
-                    # قراءة الاسم للعرض (إذا وجد)
                     if s_info.get('category_name'):
                         category_name_for_display = s_info['category_name']
                         
-                    # 💥 الفلترة: قراءة السعر من المفتاح الصحيح 'user_price'
                     user_price = s_info.get('user_price', 0) 
                     min_qty = s_info.get('min', 0)
                     
@@ -410,7 +579,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     except (ValueError, TypeError):
                         user_price = 0
                     
-                    # 📌 عرض الخدمة فقط إذا كانت مسعرة ولها حد أدنى واسم
                     if s_info.get('name') and user_price > 0 and min_qty > 0:
                         services_in_category[s_id] = s_info
                 
@@ -423,12 +591,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     bot.send_message(chat_id, f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name_for_display}:*", parse_mode='Markdown', reply_markup=markup)
                 return
 
-            # 2. بناء الأزرار للخدمات
             for service_id, service_info in services_in_category.items():
                 name = service_info.get('name', f"خدمة #{service_id}")
                 min_order = str(service_info.get('min', 'Min'))
-                
-                # استخدام سعر المستخدم المخزن/المحسوب
                 user_price = service_info.get('user_price', 0) 
                 try:
                     user_price = float(user_price)
@@ -446,9 +611,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     bot.send_message(chat_id, f"🔗 *اختر الخدمة التي تريد طلبها من فئة {category_name_for_display}:*", parse_mode='Markdown', reply_markup=markup)
             return
 
-        # =========================================================================
-        # 🚀 [معالج 'smm_order_' - جلب التفاصيل من المخزن وبدء الطلب]
-        # =========================================================================
         elif data.startswith('smm_order_'):
             service_id = data.split('_')[-1]
             
@@ -464,25 +626,20 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             name = service_details.get('name', 'خدمة رشق')
             min_order = str(service_details.get('min', '1'))
             max_order = str(service_details.get('max', 'غير محدود'))
-            
-            # 💥 الإصلاح: قراءة السعر من المفتاح الصحيح 'user_price'
             user_price = service_details.get('user_price', 0)
             try:
                 user_price = float(user_price)
             except (ValueError, TypeError):
                 user_price = 0
 
-            # 📌 تحديد حالة المستخدم للمتابعة (State Management)
-            # 💥 الإصلاح: استخدام str(user_id) كمفتاح
             bot_data['user_states'][str(user_id)] = {
                 'state': 'awaiting_smm_link',
                 'service_id': service_id,
                 'service_name': name,
-                'rate': user_price, # 👈 تخزين السعر الصحيح (لكل 1000)
+                'rate': user_price, 
                 'min': min_order,
                 'max': max_order
             }
-            # 📌 حفظ حالة المستخدم فقط
             save_bot_data({'user_states': bot_data['user_states']})
             
             message_text = (
@@ -507,7 +664,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             bot.send_message(chat_id, "💳 *متجر الكروت متوفر الآن! تواصل مع الدعم لشراء كرت.*", parse_mode='Markdown')
             return
 
-        # 🆕 --- قائمة الأرقام الجاهزة (العرض) ---
         elif data == 'ready':
             ready_numbers_stock = get_ready_numbers_stock()
             
@@ -527,7 +683,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="🔰 *الأرقام الجاهزة المتاحة حالياً:*", parse_mode='Markdown', reply_markup=markup)
 
-        # 🆕 --- تأكيد الشراء (الصيغة المطلوبة الأولى) ---
         elif data.startswith('confirm_buy_ready_'):
             number_key = data.split('_', 3)[-1] 
             ready_numbers_stock = get_ready_numbers_stock()
@@ -559,7 +714,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message_text, parse_mode='Markdown', reply_markup=markup)
 
-        # 🆕 --- تنفيذ الشراء (الصيغة المطلوبة الثانية) ---
         elif data.startswith('execute_buy_ready_'):
             number_key = data.split('_', 3)[-1] 
             ready_numbers_stock = get_ready_numbers_stock()
@@ -600,9 +754,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 
                 data_file = get_bot_data()
                 if number_key in data_file.get('ready_numbers_stock', {}):
-                    # 📌 يتم تحديث 'ready_numbers_stock' فقط هنا
                     del data_file['ready_numbers_stock'][number_key] 
-                    save_bot_data({'ready_numbers_stock': data_file['ready_numbers_stock']}) # تعديل مُقترح لتحسين الأداء
+                    save_bot_data({'ready_numbers_stock': data_file['ready_numbers_stock']}) 
                 
                 register_user(
                     user_id,
@@ -859,7 +1012,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     'country_flag': country_flag,
                     'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
                 }
-                # 📌 حفظ 'active_requests' فقط
                 save_bot_data({'active_requests': active_requests})
                 
             else:
@@ -928,7 +1080,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 register_user(user_id, user_doc.get('first_name'), user_doc.get('username'), update_purchase_status={'request_id': request_id, 'status': 'completed'})
                 
                 if request_id in active_requests:
-                    # 📌 يتم تحديث 'active_requests' فقط هنا
                     del active_requests[request_id]
                     save_bot_data({'active_requests': active_requests})
                 
@@ -1040,7 +1191,6 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                         active_requests = data_file.get('active_requests', {})
                         if str(request_id_in_db) in active_requests:
                             del active_requests[str(request_id_in_db)]
-                            # 📌 حفظ 'active_requests' فقط
                             save_bot_data({'active_requests': active_requests})
                         
                         bot.send_message(chat_id, f"✅ **تم إلغاء الطلب بنجاح!** تم استرجاع مبلغ *{price_to_restore}* روبل إلى رصيدك.", parse_mode='Markdown')
@@ -1066,209 +1216,3 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         elif data.startswith('ChangeNumber_'):
             bot.send_message(chat_id, "🔄 *سيتم إضافة وظيفة تغيير الرقم قريباً.*")
             return
-            
-    # --------------------------------------------------------------------------
-    # ⚔️ [المعالجات ذات الأولوية العالية: يجب أن تكون في المقدمة]
-    # --------------------------------------------------------------------------
-            
-    # 💡 [معالج رسائل: إدخال الرابط لطلب SMM]
-    @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(str(message.from_user.id), {}).get('state') == 'awaiting_smm_link')
-    def handle_smm_link_input(message):
-        # 💥 الإصلاح: تحويل الآيدي إلى نص مباشرة
-        user_id = str(message.from_user.id)
-        link = message.text.strip()
-        
-        bot_data = get_bot_data()
-        # 💥 الإصلاح: استخدام user_id كنص
-        user_state = bot_data['user_states'].get(user_id)
-        
-        if not user_state:
-            bot.send_message(int(user_id), "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
-            return
-        
-        # 📌 الخطوة 1: تخزين الرابط وتغيير الحالة إلى انتظار الكمية
-        user_state['link'] = link
-        user_state['state'] = 'awaiting_smm_quantity'
-        
-        # 💥 الإصلاح: استخدام user_id كنص
-        bot_data['user_states'][user_id] = user_state
-        
-        # حفظ المفتاح الذي تم تحديثه فقط
-        save_bot_data({'user_states': bot_data['user_states']})
-        
-        min_qty = user_state.get('min', '1')
-        max_qty = user_state.get('max', 'غير محدود')
-        
-        message_text = (
-            f"🔗 **تم حفظ الرابط:** `{link}`\n"
-            f"🔢 **الخطوة 2:** يرجى إرسال **الكمية المطلوبة** (أقل كمية هي {min_qty}، والحد الأقصى {max_qty})."
-        )
-        bot.send_message(int(user_id), message_text, parse_mode='Markdown')
-    
-    # 💡 [معالج رسائل: إدخال الكمية لطلب SMM]
-    @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(str(message.from_user.id), {}).get('state') == 'awaiting_smm_quantity')
-    def handle_smm_quantity_input(message):
-        # 💥 الإصلاح: تحويل الآيدي إلى نص مباشرة
-        user_id = str(message.from_user.id)
-        
-        bot_data = get_bot_data()
-        # 💥 الإصلاح: استخدام user_id كنص
-        user_state = bot_data['user_states'].get(user_id)
-        
-        if not user_state:
-            bot.send_message(int(user_id), "❌ انتهت صلاحية الطلب. يرجى البدء من جديد.", reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
-            return
-
-        try:
-            quantity = int(message.text.strip())
-        except ValueError:
-            bot.send_message(int(user_id), "❌ *الكمية غير صحيحة. يرجى إرسال رقم صحيح.*", parse_mode='Markdown')
-            return
-            
-        if quantity <= 0:
-            bot.send_message(int(user_id), "❌ *الكمية يجب أن تكون رقماً موجباً.*", parse_mode='Markdown')
-            return
-        
-        service_id = user_state.get('service_id')
-        link = user_state.get('link')
-        rate_per_k = float(user_state.get('rate', 0)) # السعر لكل 1000 وحدة
-        min_qty = int(user_state.get('min', 1))
-        max_qty = int(user_state.get('max', 999999999)) 
-        service_name = user_state.get('service_name', 'خدمة رشق')
-        
-        if quantity < min_qty:
-            bot.send_message(int(user_id), f"❌ *الكمية المدخلة أقل من الحد الأدنى. الحد الأدنى هو {min_qty}.*", parse_mode='Markdown')
-            return
-        
-        if quantity > max_qty:
-             bot.send_message(int(user_id), f"❌ *الكمية المدخلة أكبر من الحد الأقصى. الحد الأقصى هو {max_qty}.*", parse_mode='Markdown')
-             return
-            
-        price = (quantity / 1000) * rate_per_k
-        user_doc = get_user_doc(int(user_id))
-        user_balance = user_doc.get('balance', 0)
-        
-        if user_balance < price:
-            bot.send_message(int(user_id), f"❌ *عذرًا، رصيدك غير كافٍ لإتمام هذه العملية. الرصيد المطلوب: {price:.2f} روبل.*", parse_mode='Markdown')
-            
-            # 💥 الإصلاح: استخدام user_id كنص عند الحذف
-            del bot_data['user_states'][user_id]
-            
-            # حفظ حقل 'user_states' فقط
-            save_bot_data({'user_states': bot_data['user_states']})
-            return
-
-        try:
-            order_result = smm_kings_api.add_order(service_id, link, quantity)
-            
-            if order_result and 'order' in order_result:
-                order_id = str(order_result.get('order'))
-                remaining_balance = user_balance - price
-                
-                update_user_balance(int(user_id), -price, is_increment=True)
-                
-                register_user(
-                    int(user_id), 
-                    user_doc.get('first_name'), 
-                    user_doc.get('username'), 
-                    new_purchase={
-                        'request_id': order_id, 
-                        'link': link,
-                        'service': 'smmkings',
-                        'service_name': service_name,
-                        'price': price,
-                        'quantity': quantity,
-                        'status': 'smm_pending',
-                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
-                    }
-                )
-                
-                message_text = (
-                    f"✅ **تم تقديم طلب الرشق بنجاح!**\n"
-                    f"🔥 **الخدمة:** `{service_name}`\n"
-                    f"🔗 **الرابط:** `{link}`\n"
-                    f"🔢 **الكمية:** `{quantity}`\n"
-                    f"💸 **السعر:** `{price:.2f}` روبل\n"
-                    f"🅿️ **رقم الطلب:** `{order_id}`\n\n"
-                    f"🤖 **رصيدك المتبقي:** `{remaining_balance:.2f}` روبل."
-                )
-                bot.send_message(int(user_id), message_text, parse_mode='Markdown', reply_markup=types.InlineKeyboardMarkup().row(types.InlineKeyboardButton('🔙 - القائمة الرئيسية', callback_data='back')))
-
-            else:
-                bot.send_message(int(user_id), f"❌ **فشل تقديم الطلب:** لم يتمكن البوت من إرسال الطلب إلى SMMKings. لم يتم خصم رصيدك. قد يكون السبب هو خطأ في الرابط أو عدم توفر الخدمة حالياً.", parse_mode='Markdown')
-            
-        except Exception as e:
-            logging.error(f"SMMKings add_order exception: {e}")
-            bot.send_message(int(user_id), "❌ **فشل حرج:** حدث خطأ غير متوقع أثناء محاولة تقديم الطلب. لم يتم خصم رصيدك. يرجى التواصل مع الدعم.", parse_mode='Markdown')
-
-        # 📌 مسح حالة المستخدم بعد إكمال/فشل الطلب
-        # 💥 الإصلاح: استخدام user_id كنص عند الحذف
-        del bot_data['user_states'][user_id]
-        
-        # حفظ حقل 'user_states' فقط
-        save_bot_data({'user_states': bot_data['user_states']})
-        
-    # --------------------------------------------------------------------------
-    # 🛑 [المعالج الأقل أولوية: التقاط الرسائل العامة]
-    # --------------------------------------------------------------------------
-
-    # هذا المعالج يلتقط أي رسالة لا يلتقطها أي معالج آخر (مثل /start)
-    @bot.message_handler(func=lambda message: message.from_user.id != DEVELOPER_ID)
-    def handle_user_messages(message):
-        chat_id = message.chat.id
-        user_id = message.from_user.id
-        first_name = message.from_user.first_name
-        username = message.from_user.username
-        
-        if message.chat.type != "private":
-            return
-        
-        referrer_id = None
-        if message.text.startswith('/start'):
-            try:
-                payload = message.text.split()[1]
-                if payload.isdigit():
-                    referrer_id = int(payload)
-            except:
-                pass
-        
-        register_user(user_id, first_name, username, referrer_id=referrer_id)
-
-        is_subscribed = True
-        for channel in CHANNELS_LIST:
-            if not check_subscription(bot, user_id, channel):
-                is_subscribed = False
-                break
-
-        if not is_subscribed:
-            markup = get_subscription_markup(CHANNELS_LIST)
-            
-            bot.send_message(chat_id, 
-                             "🛑 **يجب عليك الاشتراك في قنوات البوت الإجبارية لاستخدام الخدمة.**\n\nيرجى الاشتراك في جميع القنوات ثم الضغط على زر **تم الاشتراك**.", 
-                             parse_mode='Markdown', 
-                             reply_markup=markup)
-            return
-
-        if message.text.startswith('/start'):
-             show_main_menu(chat_id)
-             return
-
-        elif message.text in ['/balance', 'رصيدي']:
-            user_doc = get_user_doc(user_id)
-            balance = user_doc.get('balance', 0) if user_doc else 0
-            bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
-            return
-
-        elif message.text in ['/invite', 'رابط الإحالة']:
-            bot.send_message(chat_id, 
-                             f"🔗 *رابط الإحالة الخاص بك:*\n`https://t.me/{bot.get_me().username}?start={user_id}`\n\n"
-                             f"🤑 *عندما يقوم صديقك بالتسجيل عبر هذا الرابط، ستحصل أنت على 0.25 روبل مجاناً.*", 
-                             parse_mode='Markdown')
-            return
-        
-        else:
-            # رسالة افتراضية لأي رسالة أخرى
-            bot.send_message(chat_id, "⚠️ **رسالة غير مفهومة.** يمكنك استخدام الأمر `/start` للعودة إلى القائمة الرئيسية أو استخدام الأزرار المتاحة.", parse_mode='Markdown')
-
-    # --------------------------------------------------------------------------
-
