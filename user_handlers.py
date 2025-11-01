@@ -21,8 +21,7 @@ CHANNEL_2_ID = '@EESSMT'
 CHANNELS_LIST = [CHANNEL_1_ID, CHANNEL_2_ID] 
 CHANNEL_ID_FOR_NOTIFICATIONS = CHANNEL_2_ID # القناة التي سيتم إرسال إشعارات النجاح إليها
 
-# 💡 --- MongoDB IMPORTS ---
-# يتم افتراض وجود هذه الدوال في ملف db_manager.py
+# 📌 [يجب استبدال هذا الاستيراد بالاستيراد الحقيقي من ملف db_manager.py]
 from db_manager import (
     get_user_doc,
     update_user_balance,
@@ -34,6 +33,29 @@ from db_manager import (
 # =========================================================================
 # 💡 [دوال مساعدة]
 # =========================================================================
+
+def get_bot_data():
+    # دالة مساعدة لجلب البيانات (افتراضي)
+    try:
+        with open('data/bot_data.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {'user_states': {}, 'countries': {}, 'smmkings_services': {}, 'ready_numbers_stock': {}, 'active_requests': {}}
+
+def save_bot_data(new_data):
+    # دالة مساعدة لحفظ البيانات (افتراضي)
+    data = get_bot_data()
+    data.update(new_data)
+    with open('data/bot_data.json', 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+        
+def show_admin_menu(bot, chat_id):
+    # 💡 [هذه دالة افتراضية يجب أن تكون معرفة في admin_handlers.py]
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton('📊 لوحة التحكم', callback_data='admin_dashboard'))
+    markup.add(types.InlineKeyboardButton('⚙️ الإعدادات العامة', callback_data='admin_settings'))
+    bot.send_message(chat_id, "👑 *مرحباً بك أيها المشرف، هذه قائمة الأدمن:*", parse_mode='Markdown', reply_markup=markup)
+
 def format_success_message(order_id, country_name, country_flag, user_id, price, phone_number, code, service_name, activation_type="يدوي"):
     """
     تقوم ببناء رسالة إشعار النجاح بالتنسيق المطلوب.
@@ -65,13 +87,14 @@ def format_success_message(order_id, country_name, country_flag, user_id, price,
     return message
 
 def check_subscription(bot, user_id, channel_id):
+    # محاكاة للتحقق الفعلي
     try:
         member = bot.get_chat_member(channel_id, user_id)
         if member.status in ['member', 'administrator', 'creator']:
             return True
         return False
-    except Exception as e:
-        logging.error(f"Error checking subscription for {user_id} in {channel_id}: {e}")
+    except Exception:
+        # إذا حدث خطأ في API، نفترض أنه غير مشترك أو نفشل
         return False
         
 def get_subscription_markup(channels_list):
@@ -129,9 +152,6 @@ def show_main_menu(bot, chat_id, message_id=None, EESSMT='EESSMT'):
     else:
         bot.send_message(chat_id, text, parse_mode='Markdown', reply_markup=markup)
 
-# =========================================================================
-# 💡 [دالة عرض فئات SMM مع ترقيم وفلترة]
-# =========================================================================
 def show_smm_categories(bot, chat_id, message_id, page=1):
     """
     تجلب خدمات الرشق المخزنة محلياً، وتجمعها حسب 'category_id_short' مع ترقيم الصفحات، 
@@ -229,16 +249,23 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         return get_bot_data().get('ready_numbers_stock', {})
 
     # --------------------------------------------------------------------------
-    # 🥇 [المعالج ذو الأولوية القصوى: /start] - تم فصله لضمان التنظيف
+    # 🥇 [المعالج ذو الأولوية القصوى: /start] - تم إصلاح مشكلة المشرف
     # --------------------------------------------------------------------------
     @bot.message_handler(commands=['start'])
     def handle_start(message):
         chat_id = message.chat.id
         user_id = str(message.from_user.id)
+        
+        # 📌 التعديل الصحيح: فحص المشرف أولاً وقبل أي منطق آخر
+        if int(user_id) == DEVELOPER_ID: 
+            # عرض قائمة الأدمن مباشرة
+            show_admin_menu(bot, chat_id)
+            return
+            
         first_name = message.from_user.first_name
         username = message.from_user.username
         
-        # 📌 الخطوة 1: تنظيف حالة المستخدم المعلقة (إذا وجدت)
+        # 📌 الخطوة 1: تنظيف حالة المستخدم المعلقة (للمستخدم العادي)
         bot_data = get_bot_data()
         if user_id in bot_data.get('user_states', {}):
             del bot_data['user_states'][user_id]
@@ -285,10 +312,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         user_id = str(message.from_user.id)
         link = message.text.strip()
         
-        # 🛑 يجب أن يتأكد هذا المعالج من أن الرسالة ليست أمر /start تم إرساله حديثاً
+        # 🛑 فحص احتياطي لـ /start (لأن معالج /start المستقل يجب أن يلتقطه أولاً)
         if link.startswith('/start'):
-            # الرسالة كانت أمراً، لكن معالج /start لم يعمل لسبب ما (أو تم إرساله بعد بدء عملية الرشق).
-            # نتجاهل الرسالة هنا ونعتمد على أن الأمر تم معالجته بالفعل (أو يجب تنبيه المستخدم).
             bot.send_message(int(user_id), "❌ تم إلغاء عملية الطلب الحالية. يرجى استخدام الأمر `/start` مرة أخرى للبدء من القائمة الرئيسية.", parse_mode='Markdown')
             
             # تنظيف الحالة هنا احتياطياً
@@ -420,7 +445,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
     # 🛑 [المعالج الأقل أولوية: التقاط الرسائل العامة]
     # --------------------------------------------------------------------------
 
-    # هذا المعالج يلتقط أي رسالة لا يلتقطها أي معالج آخر (الأوامر الأخرى، الرسائل النصية)
+    # هذا المعالج يلتقط أي رسالة لا يلتقطها أي معالج آخر
     @bot.message_handler(func=lambda message: message.from_user.id != DEVELOPER_ID, content_types=['text'])
     def handle_user_messages(message):
         chat_id = message.chat.id
@@ -430,10 +455,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             return
 
         if message.text.startswith('/start'):
-            # هذا الأمر لن يتم الوصول إليه أبداً إذا كان معالج commands=['start'] يعمل بشكل صحيح
-            # لكنه يعمل كاحتياطي لتنظيف الحالة في حال إرسال /start في منتصف عملية ما.
-            bot.send_message(chat_id, "⚠️ **تنبيه:** يرجى استخدام أمر `/start` مرة أخرى لبدء القائمة الرئيسية.", parse_mode='Markdown')
-            return
+            # هذا فحص إضافي وغير ضروري نظرياً بوجود معالج /start المستقل، لكنه يبقى كصمام أمان
+            return 
 
         elif message.text in ['/balance', 'رصيدي']:
             user_doc = get_user_doc(user_id)
@@ -454,7 +477,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
 
 
     # --------------------------------------------------------------------------
-    # 📌 [باقي معالجات الـ Callbacks] - لم يتم تغييرها جذرياً في هذا التعديل
+    # 📌 [باقي معالجات الـ Callbacks] - يجب استكمال هذا الجزء بنفس منطق الفحص
     # --------------------------------------------------------------------------
     @bot.callback_query_handler(func=lambda call: call.from_user.id != DEVELOPER_ID)
     def handle_user_callbacks(call):
@@ -934,12 +957,14 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
 
             result = None
             if service == 'smsman':
+                # افتراض استدعاء API لـ smsman
                 result = smsman_api['request_smsman_number'](app_id, country_code)
                 if result and 'request_id' in result:
                     result['success'] = True
                     result['id'] = str(result['request_id'])
                     result['number'] = result.get('Phone', result.get('number'))
             elif service == 'tigersms':
+                # افتراض استدعاء API لـ tigersms
                 result = tiger_sms_client.get_number(app_id, country_code)
 
             logging.info(f"Response from {service}: {result}")
