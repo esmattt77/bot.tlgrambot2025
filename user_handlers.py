@@ -274,15 +274,31 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
     # ⚔️ [المعالجات ذات الأولوية العالية: يجب أن تكون في المقدمة]
     # --------------------------------------------------------------------------
     
-    # 💥 التعديل الثاني: إضافة معالج /start منفصل ذو أولوية عالية
+    # 💥 التعديل الحاسم: إضافة معالج /start منفصل ذو أولوية عالية مع فحص المشرف
     @bot.message_handler(commands=['start'])
     def handle_start_command(message):
         chat_id = message.chat.id
-        user_id = str(message.from_user.id) 
+        user_id = message.from_user.id # نستخدم الآيدي كرقم صحيح للتحقق من المشرف 
         first_name = message.from_user.first_name
         username = message.from_user.username
         
-        # 📌 استخراج ريفرال آيدي
+        # 👑 [الإصلاح: التحقق من المشرف أولاً]
+        if user_id == DEVELOPER_ID:
+            # مسح حالة المستخدم لتجنب تضارب SMM في حال كان المشرف هو المستخدم الوحيد
+            bot_data = get_bot_data()
+            user_states = bot_data.get('user_states', {})
+            if str(user_id) in user_states:
+                del user_states[str(user_id)]
+                save_bot_data({'user_states': user_states})
+                
+            # توجيه إلى قائمة المشرف (يفترض وجود هذه القائمة في admin_handlers.py)
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton('⚙️ فتح لوحة التحكم', callback_data='admin_main'))
+            
+            bot.send_message(chat_id, "👑 *مرحباً بك أيها المشرف!* اختر الإجراء.", parse_mode='Markdown', reply_markup=markup)
+            return # إنهاء التنفيذ للمشرف
+        
+        # 📌 استخراج ريفرال آيدي (للمستخدم العادي)
         referrer_id = None
         try:
             payload = message.text.split()[1]
@@ -297,8 +313,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         # ⚠️ تصفير الحالة (الأهم لمنع تضارب الرابط/الكمية)
         bot_data = get_bot_data()
         user_states = bot_data.get('user_states', {})
-        if user_id in user_states:
-            del user_states[user_id]
+        if str(user_id) in user_states:
+            del user_states[str(user_id)]
             save_bot_data({'user_states': user_states})
 
         # التحقق من الاشتراك الإجباري
