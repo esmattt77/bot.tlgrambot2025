@@ -20,8 +20,7 @@ CHANNEL_1_ID = '@wwesmaat'
 CHANNEL_2_ID = '@EESSMT'   
 CHANNELS_LIST = [CHANNEL_1_ID, CHANNEL_2_ID] 
 
-# 💥 التعديل الأول: استخدام المعرف الرقمي للقناة
-# تم تعيين المعرف الرقمي للقناة: -1001158537466
+# 💥 التعديل الأول: استخدام المعرف الرقمي للقناة (تم الاحتفاظ به)
 CHANNEL_ID_FOR_NOTIFICATIONS = -1001158537466 
 
 # 💡 --- MongoDB IMPORTS ---
@@ -271,71 +270,9 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
     # =========================================================================
 
     # --------------------------------------------------------------------------
-    # ⚔️ [المعالجات ذات الأولوية العالية: يجب أن تكون في المقدمة]
+    # ⚔️ [المعالجات ذات الأولوية العالية (إلغاء معالج /start المنفصل)]
     # --------------------------------------------------------------------------
     
-    # 💥 التعديل الحاسم: إضافة معالج /start منفصل ذو أولوية عالية مع فحص المشرف
-    @bot.message_handler(commands=['start'])
-    def handle_start_command(message):
-        chat_id = message.chat.id
-        user_id = message.from_user.id # نستخدم الآيدي كرقم صحيح للتحقق من المشرف 
-        first_name = message.from_user.first_name
-        username = message.from_user.username
-        
-        # 👑 [الإصلاح: التحقق من المشرف أولاً]
-        if user_id == DEVELOPER_ID:
-            # مسح حالة المستخدم لتجنب تضارب SMM في حال كان المشرف هو المستخدم الوحيد
-            bot_data = get_bot_data()
-            user_states = bot_data.get('user_states', {})
-            if str(user_id) in user_states:
-                del user_states[str(user_id)]
-                save_bot_data({'user_states': user_states})
-                
-            # توجيه إلى قائمة المشرف (يفترض وجود هذه القائمة في admin_handlers.py)
-            markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton('⚙️ فتح لوحة التحكم', callback_data='admin_main'))
-            
-            bot.send_message(chat_id, "👑 *مرحباً بك أيها المشرف!* اختر الإجراء.", parse_mode='Markdown', reply_markup=markup)
-            return # إنهاء التنفيذ للمشرف
-        
-        # 📌 استخراج ريفرال آيدي (للمستخدم العادي)
-        referrer_id = None
-        try:
-            payload = message.text.split()[1]
-            if payload.isdigit():
-                referrer_id = int(payload)
-        except:
-            pass
-        
-        # تسجيل المستخدم
-        register_user(int(user_id), first_name, username, referrer_id=referrer_id) 
-        
-        # ⚠️ تصفير الحالة (الأهم لمنع تضارب الرابط/الكمية)
-        bot_data = get_bot_data()
-        user_states = bot_data.get('user_states', {})
-        if str(user_id) in user_states:
-            del user_states[str(user_id)]
-            save_bot_data({'user_states': user_states})
-
-        # التحقق من الاشتراك الإجباري
-        is_subscribed = True
-        for channel in CHANNELS_LIST:
-            if not check_subscription(bot, int(user_id), channel):
-                is_subscribed = False
-                break
-
-        if not is_subscribed:
-            markup = get_subscription_markup(CHANNELS_LIST)
-            
-            bot.send_message(chat_id, 
-                             "🛑 **يجب عليك الاشتراك في قنوات البوت الإجبارية لاستخدام الخدمة.**\n\nيرجى الاشتراك في جميع القنوات ثم الضغط على زر **تم الاشتراك**.", 
-                             parse_mode='Markdown', 
-                             reply_markup=markup)
-            return
-
-        show_main_menu(chat_id)
-        return
-            
     # 💡 [معالج رسائل: إدخال الرابط لطلب SMM]
     @bot.message_handler(func=lambda message: get_bot_data().get('user_states', {}).get(str(message.from_user.id), {}).get('state') == 'awaiting_smm_link')
     def handle_smm_link_input(message):
@@ -474,39 +411,89 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         save_bot_data({'user_states': bot_data['user_states']})
         
     # --------------------------------------------------------------------------
-    # 🛑 [المعالج الأقل أولوية: التقاط الرسائل العامة]
+    # 🛑 [المعالج الأقل أولوية: التقاط الرسائل العامة ومعالج /start (مع إصلاح المشرف)]
     # --------------------------------------------------------------------------
 
-    # هذا المعالج يلتقط أي رسالة لا يلتقطها أي معالج آخر (تم فصل معالج /start عنه)
-    @bot.message_handler(func=lambda message: message.from_user.id != DEVELOPER_ID)
+    # هذا المعالج يلتقط أي رسالة لا يلتقطها أي معالج آخر (ويشمل /start)
+    @bot.message_handler(func=lambda message: message.chat.type == "private")
     def handle_user_messages(message):
         chat_id = message.chat.id
         user_id = message.from_user.id
         first_name = message.from_user.first_name
         username = message.from_user.username
         
-        if message.chat.type != "private":
-            return
-        
-        # تسجيل المستخدم (بدون منطق الريفرال الذي تم نقله إلى /start)
-        register_user(user_id, first_name, username) 
-
-        is_subscribed = True
-        for channel in CHANNELS_LIST:
-            if not check_subscription(bot, user_id, channel):
-                is_subscribed = False
-                break
-
-        if not is_subscribed:
-            markup = get_subscription_markup(CHANNELS_LIST)
+        # 👑 [الإصلاح: التحقق من المشرف أولاً للبدء]
+        if user_id == DEVELOPER_ID:
+            # مسح حالة المستخدم لتجنب تضارب SMM إذا كان المشرف هو المستخدم الوحيد
+            bot_data = get_bot_data()
+            user_states = bot_data.get('user_states', {})
+            if str(user_id) in user_states:
+                del user_states[str(user_id)]
+                save_bot_data({'user_states': user_states})
+                
+            # بما أن ملف admin_handlers.py هو المسؤول عن قائمة المشرف، 
+            # نكتفي هنا بـ `return` لكي يكمل البوت مسار البحث عن معالج المشرف 
+            # (المفترض أنه في ملف admin_handlers.py وهو ذو أولوية أعلى من هذا المعالج لـ /start)
+            # أو لتجنب أي تضارب مع معالجات المستخدمين العاديين أدناه.
             
-            bot.send_message(chat_id, 
-                             "🛑 **يجب عليك الاشتراك في قنوات البوت الإجبارية لاستخدام الخدمة.**\n\nيرجى الاشتراك في جميع القنوات ثم الضغط على زر **تم الاشتراك**.", 
-                             parse_mode='Markdown', 
-                             reply_markup=markup)
+            # إذا كان المشرف يستخدم /start، يجب أن يتم التعامل معه بواسطة معالج المشرف المنفصل.
+            # هنا نضمن عدم معالجته كـ مستخدم عادي
+            
+            if message.text == '/start':
+                # يمكن هنا استدعاء دالة لوحة التحكم الخاصة بالمشرف مباشرةً
+                # لكن لعدم توفرها، نكتفي بالـ return للسماح للمعالج الصحيح في admin_handlers بالعمل
+                # أو نرسل رسالة توجيهية (للتأكد أن الـ return يوقف التنفيذ هنا)
+                # bot.send_message(chat_id, "👑 *يجب أن يعمل معالج المشرف المنفصل الآن!*", parse_mode='Markdown')
+                return
+
+            return # إيقاف التنفيذ للمشرف لجميع الرسائل
+
+        # ----------------------------------------------
+        # ⬇️ [من هنا يبدأ منطق المستخدم العادي] ⬇️
+        # ----------------------------------------------
+        
+        # 📌 [معالج /start للمستخدم العادي]
+        if message.text.startswith('/start'):
+            # 📌 استخراج ريفرال آيدي
+            referrer_id = None
+            try:
+                payload = message.text.split()[1]
+                if payload.isdigit():
+                    referrer_id = int(payload)
+            except:
+                pass
+            
+            # تسجيل المستخدم
+            register_user(user_id, first_name, username, referrer_id=referrer_id) 
+            
+            # ⚠️ تصفير الحالة (الأهم لمنع تضارب الرابط/الكمية)
+            bot_data = get_bot_data()
+            user_states = bot_data.get('user_states', {})
+            if str(user_id) in user_states:
+                del user_states[str(user_id)]
+                save_bot_data({'user_states': user_states})
+
+            # التحقق من الاشتراك الإجباري
+            is_subscribed = True
+            for channel in CHANNELS_LIST:
+                if not check_subscription(bot, user_id, channel):
+                    is_subscribed = False
+                    break
+
+            if not is_subscribed:
+                markup = get_subscription_markup(CHANNELS_LIST)
+                
+                bot.send_message(chat_id, 
+                                 "🛑 **يجب عليك الاشتراك في قنوات البوت الإجبارية لاستخدام الخدمة.**\n\nيرجى الاشتراك في جميع القنوات ثم الضغط على زر **تم الاشتراك**.", 
+                                 parse_mode='Markdown', 
+                                 reply_markup=markup)
+                return
+
+            show_main_menu(chat_id)
             return
         
-        if message.text in ['/balance', 'رصيدي']:
+        # 📌 [معالجة الأوامر النصية الأخرى]
+        elif message.text in ['/balance', 'رصيدي']:
             user_doc = get_user_doc(user_id)
             balance = user_doc.get('balance', 0) if user_doc else 0
             bot.send_message(chat_id, f"💰 رصيدك الحالي هو: *{balance}* روبل.", parse_mode='Markdown')
