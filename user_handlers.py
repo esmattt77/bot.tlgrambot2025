@@ -79,7 +79,7 @@ def format_success_message(order_id, country_name, country_flag, user_id, price,
 # 💡 [نهاية دالة تنسيق رسالة الإشعار]
 # =========================================================================
 
-def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman_api, tiger_sms_client):
+def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman_api, hero_sms_client):
     
     # دالة مساعدة للوصول إلى مخزون الأرقام الجاهزة
     def get_ready_numbers_stock():
@@ -663,7 +663,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
         elif data == 'Buynum':
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('سيرفر 1', callback_data='service_smsman')) 
-            markup.row(types.InlineKeyboardButton('سيرفر 2', callback_data='service_tigersms')) 
+            markup.row(types.InlineKeyboardButton('سيرفر 2', callback_data='service_herosms')) 
             markup.row(types.InlineKeyboardButton('- رجوع.', callback_data='back'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="📞 *اختر الخدمة التي تريد الشراء منها:*", parse_mode='Markdown', reply_markup=markup)
         
@@ -696,7 +696,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             service = parts[1]
             markup = types.InlineKeyboardMarkup()
             
-            server_name = 'سيرفر 1' if service == 'smsman' else ('سيرفر 2' if service == 'tigersms' else 'غير معروف') 
+            server_name = 'سيرفر 1' if service == 'smsman' else ('سيرفر 2' if service == 'herosms' else 'غير معروف') 
 
             if service == 'smsman':
                 markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_2_page_1'))
@@ -712,7 +712,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 markup.row(types.InlineKeyboardButton('⁞ Viber 📲', callback_data=f'show_countries_{service}_16_page_1'))
                 markup.row(types.InlineKeyboardButton('⁞ حراج 🛍', callback_data=f'show_countries_{service}_13_page_1'))
                 markup.row(types.InlineKeyboardButton('⁞ السيرفر العام ☑️', callback_data=f'show_countries_{service}_14_page_1'))
-            elif service == 'tigersms':
+            elif service == 'herosms':
                 markup.row(types.InlineKeyboardButton('⁞ واتسأب 💬', callback_data=f'show_countries_{service}_wa_page_1'))
                 markup.row(types.InlineKeyboardButton('⁞ تيليجرام 📢', callback_data=f'show_countries_{service}_tg_page_1'))
                 markup.row(types.InlineKeyboardButton('⁞ فيسبوك 🏆', callback_data=f'show_countries_{service}_fb_page_1'))
@@ -789,8 +789,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     result['success'] = True
                     result['id'] = str(result['request_id'])
                     result['number'] = result.get('Phone', result.get('number'))
-            elif service == 'tigersms':
-                result = tiger_sms_client.get_number(app_id, country_code)
+            elif service == 'herosms':
+                result = hero_sms_client.get_number(app_id, country_code)
 
             logging.info(f"Response from {service}: {result}")
 
@@ -893,8 +893,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 result = smm_kings_api.get_otp(request_id)
             elif service_name == 'smsman':
                 result = smsman_api['get_smsman_code'](request_id) 
-            elif service_name == 'tigersms':
-                result = tiger_sms_client.get_code(request_id)
+            elif service_name == 'herosms':
+                result = hero_sms_client.get_code(request_id)
 
             otp_code = result.get('code') if result and result.get('status') in ['success', 'COMPLETED'] and result.get('code') else None 
             
@@ -911,8 +911,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                         smsman_api['set_smsman_status'](request_id, 6) 
                     elif service_name == 'smmkings':
                         smm_kings_api.set_status(request_id, 'STATUS_ACTIVATION_SUCCESS') 
-                    elif service_name == 'tigersms':
-                        tiger_sms_client.set_status(request_id, 'STATUS_SUCCESS') 
+                    elif service_name == 'herosms':
+                        hero_sms_client.set_status(request_id, 3) 
                         
                 except Exception as e:
                     logging.error(f"Failed to set status to USED for {service_name} Req ID {request_id}: {e}")
@@ -964,8 +964,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                         smm_kings_api.set_status(request_id, 'STATUS_WAIT_CODE') 
                     elif service_name == 'smsman':
                         smsman_api['set_smsman_status'](request_id, 3) 
-                    elif service_name == 'tigersms':
-                        tiger_sms_client.set_status(request_id, 'STATUS_WAIT_CODE') 
+                    elif service_name == 'herosms':
+                        hero_sms_client.set_status(request_id, 1) 
                 
                     logging.info(f"Set status for {service_name} Req ID {request_id} to WAIT_CODE.")
 
@@ -1011,8 +1011,8 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                 if result and (result.get('message') == 'STATUS_CANCEL' or result.get('status') in ['success', 'cancelled']):
                     success_api_call = True
             
-            elif service == 'tigersms':
-                result = tiger_sms_client.cancel_request(request_id_raw)
+            elif service == 'herosms':
+                result = hero_sms_client.cancel_request(request_id_raw)
                 if result and result.get('success'):
                     success_api_call = True
             
