@@ -6,11 +6,11 @@ import logging
 # إعداد logging لطباعة الأخطاء في السجل
 logger = logging.getLogger(__name__)
 
-# تأكد أن المتغير البيئي مضبوط (TIGER_SMS_API_KEY)
-API_KEY = os.environ.get('TIGER_SMS_API_KEY')
-BASE_URL = 'https://api.tiger-sms.com/stubs/handler_api.php'
+# تأكد أن المتغير البيئي مضبوط (HERO_SMS_API_KEY)
+API_KEY = os.environ.get('HERO_SMS_API_KEY')
+BASE_URL = 'https://hero-sms.com/stubs/handler_api.php'
 
-class TigerSMSAPI:
+class HeroSMSAPI:
     def __init__(self, api_key):
         self.api_key = api_key
         
@@ -22,7 +22,7 @@ class TigerSMSAPI:
             response.raise_for_status() # رفع استثناء لأخطاء HTTP 4xx/5xx
             return response.text
         except requests.exceptions.RequestException as e:
-            logger.error(f"TIGER SMS API request failed with error: {e}, Params: {params}")
+            logger.error(f"HERO SMS API request failed with error: {e}, Params: {params}")
             return f"ERROR: API request failed - {e}"
 
     def get_balance(self):
@@ -38,10 +38,10 @@ class TigerSMSAPI:
         params = {'action': 'getPrices'}
         response = self._make_request(params)
         if response.startswith('ERROR'):
-            logger.error(f"TIGER SMS getPrices failed: {response}")
+            logger.error(f"HERO SMS getPrices failed: {response}")
             return {}
         try:
-            # الاستجابة هي JSON لـ getPrices، لا يجب البدء بـ 'ERROR'
+            # الاستجابة هي JSON لـ getPrices
             data = json.loads(response)
             countries = {}
             for country_id, services_info in data.items():
@@ -53,7 +53,7 @@ class TigerSMSAPI:
                     }
             return countries
         except json.JSONDecodeError:
-            logger.error(f"TIGER SMS failed to decode JSON from getPrices: {response}")
+            logger.error(f"HERO SMS failed to decode JSON from getPrices: {response}")
             return {}
 
     def get_number(self, service_name, country_id):
@@ -64,15 +64,13 @@ class TigerSMSAPI:
         }
         response = self._make_request(params)
         
-        # 🟢 تصحيح معالجة أخطاء BAD_SERVICE / NO_NUMBERS
         if response.startswith('ACCESS_NUMBER:'):
             parts = response.split(':')
             request_id = parts[1].strip()
             phone_number = parts[2].strip()
             return {'success': True, 'id': request_id, 'number': phone_number}
         else:
-            logger.warning(f"TIGER SMS getNumber failed: {response}")
-            # في هذه الحالة سيعود 'BAD_SERVICE' أو 'NO_NUMBERS' كقيمة لـ response
+            logger.warning(f"HERO SMS getNumber failed: {response}")
             return {'success': False, 'error': response}
             
     def get_code(self, request_id):
@@ -82,24 +80,21 @@ class TigerSMSAPI:
         }
         response = self._make_request(params)
         
-        # 🟢 تصحيح دالة get_code للتعامل مع كل الحالات (الأهم)
         if response.startswith('STATUS_OK:'):
             code = response.split(':')[1].strip()
             return {'success': True, 'code': code, 'status': 'received'}
         elif response == 'STATUS_WAIT_CODE':
             return {'success': False, 'status': 'waiting'}
         elif response == 'STATUS_CANCEL' or response == 'STATUS_FREE':
-            # الطلب ملغى أو انتهت صلاحيته (يحتاج إلى رد المبلغ للمستخدم)
             return {'success': False, 'status': 'cancelled', 'error': response}
         elif response.startswith('ERROR'):
             return {'success': False, 'status': 'error', 'error': response}
         else:
             return {'success': False, 'status': 'unknown', 'error': response}
 
-    # 🟢 إضافة دالة set_status (ضرورية لتأكيد الرقم أو إلغائه)
     def set_status(self, request_id, status_code):
         """
-        لتغيير حالة الطلب على Tiger SMS.
+        لتغيير حالة الطلب على Hero SMS.
         status_code = 3 لتأكيد استلام الكود (انتهاء العملية).
         status_code = 8 لإلغاء الطلب (استرداد المبلغ).
         """
@@ -110,23 +105,19 @@ class TigerSMSAPI:
         }
         response = self._make_request(params)
         
-        # ACCESS_READY للنجاح (خصوصاً لرمز 3)، ACCESS_CANCEL للرمز 8
         if response == 'ACCESS_READY' or response == 'ACCESS_CANCEL': 
             return {'success': True, 'response': response}
         else:
-            logger.error(f"TIGER SMS set_status failed for ID {request_id} with status {status_code}, Response: {response}")
+            logger.error(f"HERO SMS set_status failed for ID {request_id} with status {status_code}, Response: {response}")
             return {'success': False, 'error': response}
 
     def confirm_request(self, request_id):
-        # الكود 3 يعني تأكيد استلام الكود بنجاح
         return self.set_status(request_id, 3)
 
     def cancel_request(self, request_id):
-        # الكود 8 يعني إلغاء الطلب (إرجاع الرقم إلى المخزون)
         return self.set_status(request_id, 8) 
         
     def _get_country_name(self, country_id):
-        # القاموس لم يتغير وهو جيد
         countries = {
             '74': 'أفغانستان 🇦🇫', '155': 'ألبانيا 🇦🇱', '58': 'الجزائر 🇩🇿', '76': 'أنغولا 🇦🇴', '181': 'أنغويلا 🇦🇮',
             '169': 'أنتيجواباربودا 🇦🇬', '39': 'الأرجنتين 🇦🇷', '148': 'أرمينيا 🇦🇲', '179': 'اروبا 🇦🇼', '175': 'استراليا 🇦🇺',
@@ -154,7 +145,7 @@ class TigerSMSAPI:
             '157': 'موريشيوس 🇲🇺', '54': 'المكسيك 🇲🇽', '85': 'مولدوفا 🇲🇩', '144': 'موناكو 🇲🇨', '72': 'منغوليا 🇲🇳',
             '171': 'الجبل الأسود 🇲🇪', '180': 'مونتسيرات 🇲🇸', '37': 'المغرب 🇲🇦', '80': 'موزمبيق 🇲🇿', '5': 'ميانمار 🇲🇲',
             '138': 'ناميبيا 🇳🇦', '81': 'نيبال 🇳🇵', '48': 'هولندا 🇳🇱', '185': 'كاليدونيا 🇳🇨', '67': 'نيوزيلندا 🇳🇿',
-            '90': 'نيكاراغوا 🇳🇮', '139': 'النيجر 🇳🇪', '19': 'نيجيريا 🇳🇬', '174': 'النرويج 🇳🇴', '107': 'عمان 🇴🇲',
+            '90': 'نيكاراغوا 🇳🇮', '139': 'النيجر 🇳🇪', '19': 'نيجيريا 🇬🇳', '174': 'النرويج 🇳🇴', '107': 'عمان 🇴🇲',
             '66': 'باكستان 🇵🇰', '188': 'فلسطين 🇵🇸', '112': 'بنما 🇵🇦', '79': 'بابو 🇵🇬', '87': 'باراغواي 🇵🇾',
             '65': 'بيرو 🇵🇪', '4': 'الفلبين 🇵🇭', '15': 'بولندا 🇵🇱', '117': 'البرتغال 🇵🇹', '97': 'بورتوريكو 🇵🇷',
             '111': 'قطر 🇶🇦', '146': 'جمع-شمل 🇫🇷', '32': 'رومانيا 🇷🇴', '0': 'روسيا 🇷🇺', '140': 'رواندا 🇷🇼',
