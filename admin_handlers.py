@@ -120,7 +120,7 @@ except ImportError:
     def get_user_doc(*args): return None
 
 # ⭐️ إعداد المعالجات
-def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_sms_client):
+def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, hero_sms_client):
 
     # دالة مساعدة لتحديث الأرقام الجاهزة في المخزون الداخلي
     def update_ready_numbers_stock(stock_data=None, delete_key=None):
@@ -147,7 +147,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
     
     def get_app_buttons(service, action_type):
         """
-        تقوم بإنشاء قائمة أزرار التطبيقات لـ SMS.man و Tiger SMS.
+        تقوم بإنشاء قائمة أزرار التطبيقات لـ SMS.man و Hero SMS.
         action_type يمكن أن تكون 'add' أو 'delete'.
         """
         
@@ -161,7 +161,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             ('السيرفر العام ☑️', '14')
         ]
         
-        tigersms_apps = [
+        herosms_apps = [
             ('واتسأب 💬', 'wa'), ('تيليجرام 📢', 'tg'), ('فيسبوك 🏆', 'fb'),
             ('إنستقرام 🎥', 'ig'), ('تويتر 🚀', 'tw'), ('تيكتوك 🎬', 'tt'),
             ('قوقل 🌐', 'go'), ('سناب 🐬', 'sn'), ('ديسكورد 🎮', 'ds'),
@@ -169,7 +169,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             ('لاين 📲', 'li'), ('أمازون 🛒', 'am')
         ]
         
-        apps_list = smsman_apps if service == 'smsman' else tigersms_apps
+        apps_list = smsman_apps if service == 'smsman' else herosms_apps
         
         markup = types.InlineKeyboardMarkup(row_width=2)
         for name, app_id in apps_list:
@@ -547,7 +547,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('كشف رصيد SMMKings 🚀', callback_data='get_smmkings_balance'))
             markup.row(types.InlineKeyboardButton('كشف رصيد SMS.man', callback_data='get_smsman_balance'))
-            markup.row(types.InlineKeyboardButton('كشف رصيد Tiger SMS', callback_data='get_tigersms_balance'))
+            markup.row(types.InlineKeyboardButton('كشف رصيد Hero SMS', callback_data='get_herosms_balance'))
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="💰 اختر الموقع الذي تريد كشف رصيده:", reply_markup=markup)
         
@@ -572,12 +572,12 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
             
-        elif data == 'get_tigersms_balance':
-            tiger_sms_balance = tiger_sms_client.get_balance()
-            if tiger_sms_balance.get('success'):
-                message = f"💰 رصيد Tiger SMS الحالي: *{tiger_sms_balance.get('balance')}* روبل."
+        elif data == 'get_herosms_balance':
+            hero_sms_balance = hero_sms_client.get_balance()
+            if hero_sms_balance.get('success'):
+                message = f"💰 رصيد Hero SMS الحالي: *{hero_sms_balance.get('balance')}* روبل."
             else:
-                message = f"❌ فشل الاتصال. {tiger_sms_balance.get('error', 'خطأ غير معروف')}"
+                message = f"❌ فشل الاتصال. {hero_sms_balance.get('error', 'خطأ غير معروف')}"
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='show_api_balance_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=message, parse_mode='Markdown', reply_markup=markup)
@@ -767,7 +767,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
         elif data == 'add_country':
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('SMS.man', callback_data='add_country_service_smsman'))
-            markup.row(types.InlineKeyboardButton('Tiger SMS', callback_data='add_country_service_tigersms'))
+            markup.row(types.InlineKeyboardButton('Hero SMS', callback_data='add_country_service_herosms'))
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='🌐 اختر الخدمة لإضافة دولة:', reply_markup=markup)
 
@@ -790,8 +790,8 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
             try:
                 if service == 'smsman':
                     api_countries = smsman_api['get_smsman_countries'](app_id)
-                elif service == 'tigersms':
-                    api_countries = tiger_sms_client.get_countries(app_id)
+                elif service == 'herosms':
+                    api_countries = hero_sms_client.get_countries(app_id)
                 else: api_countries = {}
             except Exception as e:
                 bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بواجهة API ({service}): {e}')
@@ -827,7 +827,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
 
             try:
                 if service == 'smsman': api_countries = smsman_api['get_smsman_countries'](app_id)
-                elif service == 'tigersms': api_countries = tiger_sms_client.get_countries(app_id)
+                elif service == 'herosms': api_countries = hero_sms_client.get_countries(app_id)
                 else: api_countries = {}
             except Exception as e:
                 bot.send_message(chat_id, f'❌ حدث خطأ أثناء الاتصال بالـ API: {e}')
@@ -855,7 +855,7 @@ def setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_s
         elif data == 'delete_country':
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton('SMS.man', callback_data='delete_country_service_smsman'))
-            markup.row(types.InlineKeyboardButton('Tiger SMS', callback_data='delete_country_service_tigersms'))
+            markup.row(types.InlineKeyboardButton('Hero SMS', callback_data='delete_country_service_herosms'))
             markup.row(types.InlineKeyboardButton('رجوع', callback_data='admin_main_menu'))
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text='🌐 اختر الخدمة لحذف دولة:', reply_markup=markup)
 
