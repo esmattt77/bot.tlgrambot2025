@@ -23,7 +23,7 @@ from smsman_api import (
     cancel_smsman_request,
     set_smsman_status 
 )
-from tiger_sms_api import TigerSMSAPI
+from hero_sms_api import HeroSMSAPI
 
 # Import handlers
 from user_handlers import setup_user_handlers
@@ -51,11 +51,11 @@ ESM7AT = os.environ.get('ESM7AT')
 # Get API Keys
 SMMKINGS_API_KEY = os.environ.get('SMMKINGS_API_KEY') 
 SMSMAN_API_KEY = os.environ.get('SMSMAN_API_KEY')
-TIGER_SMS_API_KEY = os.environ.get('TIGER_SMS_API_KEY')
+HERO_SMS_API_KEY = os.environ.get('HERO_SMS_API_KEY')
 
 # Create API client objects
 smmkings_client = SMMKingsAPI(SMMKINGS_API_KEY)
-tiger_sms_client = TigerSMSAPI(TIGER_SMS_API_KEY)
+hero_sms_client = HeroSMSAPI(HERO_SMS_API_KEY)
 
 # قاموس API لـ SMSMan
 smsman_api = {
@@ -71,8 +71,8 @@ smsman_api = {
 app = Flask(__name__)
 
 # 🟢 إعداد الـ Handlers وتمرير العملاء
-setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smmkings_client, smsman_api, tiger_sms_client)
-setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, tiger_sms_client)
+setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smmkings_client, smsman_api, hero_sms_client)
+setup_admin_handlers(bot, DEVELOPER_ID, smmkings_client, smsman_api, hero_sms_client)
 
 @app.route(f'/{TELEGRAM_BOT_TOKEN}', methods=['POST'])
 def webhook():
