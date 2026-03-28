@@ -79,18 +79,24 @@ class HeroSMSAPI:
             'id': request_id
         }
         response = self._make_request(params)
+        logger.info(f"HeroSMS get_code response for request_id {request_id}: {response}") # إضافة سطر لتسجيل الاستجابة
         
-        if response.startswith('STATUS_OK:'):
-            code = response.split(':')[1].strip()
-            return {'success': True, 'code': code, 'status': 'received'}
-        elif response == 'STATUS_WAIT_CODE':
-            return {'success': False, 'status': 'waiting'}
-        elif response == 'STATUS_CANCEL' or response == 'STATUS_FREE':
-            return {'success': False, 'status': 'cancelled', 'error': response}
-        elif response.startswith('ERROR'):
-            return {'success': False, 'status': 'error', 'error': response}
+        if response.startswith("STATUS_OK:"):
+            parts = response.split(":")
+            if len(parts) > 1:
+                code = parts[1].strip()
+                return {"success": True, "code": code, "status": "received"}
+            else:
+                # إذا كانت الاستجابة STATUS_OK: بدون كود، فربما لا يزال في انتظار الكود
+                return {"success": False, "status": "waiting", "error": "STATUS_OK received but no code found"}
+        elif response == "STATUS_WAIT_CODE":
+            return {"success": False, "status": "waiting"}
+        elif response == "STATUS_CANCEL" or response == "STATUS_FREE":
+            return {"success": False, "status": "cancelled", "error": response}
+        elif response.startswith("ERROR"):
+            return {"success": False, "status": "error", "error": response}
         else:
-            return {'success': False, 'status': 'unknown', 'error': response}
+            return {"success": False, "status": "unknown", "error": response}
 
     def set_status(self, request_id, status_code):
         """
