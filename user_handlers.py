@@ -896,7 +896,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
             elif service_name == 'herosms':
                 result = hero_sms_client.get_code(request_id)
 
-            otp_code = result.get('code') if result and result.get('status') in ['success', 'COMPLETED'] and result.get('code') else None 
+            otp_code = result.get("code") if result and result.get("status") in ["success", "COMPLETED", "received"] and result.get("code") else None 
             
             if otp_code:
                 
@@ -912,7 +912,7 @@ def setup_user_handlers(bot, DEVELOPER_ID, ESM7AT, EESSMT, smm_kings_api, smsman
                     elif service_name == 'smmkings':
                         smm_kings_api.set_status(request_id, 'STATUS_ACTIVATION_SUCCESS') 
                     elif service_name == 'herosms':
-                        hero_sms_client.set_status(request_id, 3) 
+                        hero_sms_client.confirm_request(request_id) 
                         
                 except Exception as e:
                     logging.error(f"Failed to set status to USED for {service_name} Req ID {request_id}: {e}")
